@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_cors import CORS
+import ipaddress
 import platform
 import psutil
 import subprocess
@@ -84,6 +85,8 @@ def generate_threat_scenario(vulnerability, severity):
         "DNS Security": "Unprotected DNS servers can be used in phishing attacks and data manipulation. DNSSEC ensures the integrity of DNS queries."
     }
     return scenarios.get(vulnerability, "Unspecified threat scenario: This vulnerability could lead to serious consequences if not addressed.")
+
+
 
 def send_email_report(lead_data, scan_result):
     """Send lead info and scan result to your email using a mail relay."""
@@ -333,9 +336,6 @@ def server_lookup(domain):
         logging.error(f"Error during server lookup for {domain}: {e}")
         return f"Server lookup failed for {domain}: {e}", "High"
 
-def get_default_gateway_ip():
-    # This won't work reliably in a web environment
-    return "Gateway detection limited in web environment"
 
 def analyze_port_risks(open_ports):
     """Analyze the risk level of open ports"""
@@ -400,9 +400,112 @@ def check_open_ports():
         logging.error(f"Error in simulated port check: {e}")
         return 0, [], "Critical"
 
-def scan_gateway_ports(gateway_ip):
+
+# This function should be called within a route where request is available
+def get_client_and_gateway_ip():
+    """
+    Detects client IP and makes educated guesses about possible gateway IPs
+    based on common network configurations.
+    
+    Returns:
+        tuple: (client_ip, gateway_guesses, network_type)
+    """
+    # Get client IP (this will get the actual client IP or proxy IP)
+    client_ip = request.remote_addr
+    
+    # For more accurate client IP detection in production environments
+    # with proxies or load balancers, check the X-Forwarded-For header
+    if request.headers.get('X-Forwarded-For'):
+        # The first IP in the list is usually the client's real IP
+        forwarded_ips = request.headers.get('X-Forwarded-For').split(',')
+        client_ip = forwarded_ips[0].strip()
+    
+    # Initialize variables
+    gateway_guesses = []
+    network_type = "Unknown"
+    
+    try:
+        # Parse the IP address to determine if it's public or private
+        ip_obj = ipaddress.ip_address(client_ip)
+        
+        if ip_obj.is_private:
+            # Client is on a private network
+            network_type = "Private Network"
+            
+            # Determine network class and make gateway guesses
+            if client_ip.startswith('192.168.'):
+                # Class C private network (most common for home networks)
+                network_type = "Class C Private Network (typical home/small office)"
+                first_two_octets = '.'.join(client_ip.split('.')[:2])
+                gateway_guesses = [
+                    f"{first_two_octets}.0.1",     # 192.168.0.1
+                    f"{first_two_octets}.1.1",     # 192.168.1.1
+                    f"{first_two_octets}.0.254",   # 192.168.0.254
+                    f"{first_two_octets}.1.254"    # 192.168.1.254
+                ]
+            elif client_ip.startswith('10.'):
+                # Class A private network (common in larger organizations)
+                network_type = "Class A Private Network (typical for larger organizations)"
+                first_octet = client_ip.split('.')[0]
+                second_octet = client_ip.split('.')[1]
+                gateway_guesses = [
+                    f"{first_octet}.{second_octet}.0.1",
+                    f"{first_octet}.0.0.1",
+                    f"{first_octet}.{second_octet}.0.254",
+                    f"{first_octet}.0.0.254"
+                ]
+            elif client_ip.startswith('172.'):
+                # Check if it's in the 172.16.0.0 to 172.31.255.255 range (Class B)
+                second_octet = int(client_ip.split('.')[1])
+                if 16 <= second_octet <= 31:
+                    network_type = "Class B Private Network"
+                    first_two_octets = '.'.join(client_ip.split('.')[:2])
+                    gateway_guesses = [
+                        f"{first_two_octets}.0.1",
+                        f"{first_two_octets}.1.1",
+                        f"{first_two_octets}.0.254",
+                        f"{first_two_octets}.1.254"
+                    ]
+        else:
+            # Client is on a public network
+            network_type = "Public Network"
+            # Can't reliably guess gateway IP for public networks
+            gateway_guesses = ["Gateway detection not possible for public IP addresses"]
+            
+    except ValueError:
+        # Invalid IP address
+        return client_ip, ["Invalid IP format - cannot determine gateway"], "Unknown"
+    
+    return client_ip, gateway_guesses, network_type
+
+def get_default_gateway_ip():
+    """Enhanced gateway IP detection for web environment"""
+    client_ip, gateway_guesses, network_type = get_client_and_gateway_ip()
+    
+    # If multiple guesses are available, create a formatted string
+    if len(gateway_guesses) > 1 and "not possible" not in gateway_guesses[0]:
+        gateway_info = f"Client IP: {client_ip} | Network Type: {network_type} | Likely gateways: {', '.join(gateway_guesses)}"
+    else:
+        gateway_info = f"Client IP: {client_ip} | {gateway_guesses[0]}"
+    
+    return gateway_info
+
+def scan_gateway_ports(gateway_info):
     """Enhanced gateway port scanning for web environment"""
     results = []
+    
+    # Parse gateway info
+    client_ip = "Unknown"
+    if "Client IP:" in gateway_info:
+        client_ip = gateway_info.split("Client IP:")[1].split("|")[0].strip()
+    
+    # Add client IP information to the report
+    results.append((f"Client detected at IP: {client_ip}", "Info"))
+    
+    # Add gateway detection information
+    if "Likely gateways:" in gateway_info:
+        gateways = gateway_info.split("Likely gateways:")[1].strip()
+        results.append((f"Potential gateway IPs: {gateways}", "Info"))
     
     # Since we can't actually scan in a web environment, provide information
     # about common security risks based on the usual configurations
@@ -413,9 +516,10 @@ def scan_gateway_ports(gateway_ip):
     for port in critical_ports:
         desc, severity = GATEWAY_PORT_WARNINGS.get(port, ("Unknown service", "Medium"))
         
-        # Simulate some ports being open and some closed for a realistic report
-        import random
-        if random.choice([True, False]):  # 50% chance of being "open"
+        # Use client IP for deterministic "randomness" instead of actual random
+        # This ensures consistent results for the same client
+        ip_value = sum([int(octet) for octet in client_ip.split('.')]) if client_ip != "Unknown" else 0
+        if (ip_value + port) % 3 == 0:  # Deterministic check
             results.append((f"{desc} (Port {port}) might be open on your gateway", severity))
     
     # Always add some informational entries
@@ -423,10 +527,54 @@ def scan_gateway_ports(gateway_ip):
     results.append(("HTTPS (Port 443) is open, which is normal", "Low"))
     
     # Add a recommendation about firewall
-    results.append(("Consider configuring a proper firewall to restrict access", "Info"))
+    results.append(("Consider configuring a proper firewall to restrict gateway access", "Info"))
     
     return results
-
+def process_scan_request(lead_data):
+    """Process scan request and generate reports
+    
+    Args:
+        lead_data: Dictionary containing user information
+        
+    Returns:
+        A simplified report for web display
+    """
+    try:
+        logging.debug("Starting scan process...")
+        
+        # Save lead data
+        try:
+            save_lead_data(lead_data)
+            logging.debug("Lead data saved successfully")
+        except Exception as e:
+            logging.error(f"Error saving lead data: {e}")
+            # Continue anyway - don't fail the whole scan
+        
+        # Generate detailed report for email
+        detailed_report = generate_report(lead_data, for_web=False)
+        logging.debug(f"Detailed report generated, length: {len(detailed_report)}")
+        
+        # Generate simplified report for web display
+        web_report = generate_report(lead_data, for_web=True)
+        logging.debug(f"Web report generated, length: {len(web_report)}")
+        
+        # Try to send email with detailed report
+        try:
+            email_sent = send_email_report(lead_data, detailed_report)
+            if email_sent:
+                logging.debug("Email report sent successfully")
+            else:
+                logging.warning("Email report could not be sent")
+        except Exception as e:
+            logging.error(f"Error sending email: {e}")
+        
+        # Return the simplified report for web display
+        return web_report
+        
+    except Exception as e:
+        logging.error(f"Error in process_scan_request: {e}")
+        return f"An error occurred during the scan: {str(e)}"
+    
 def generate_report(lead_data, for_web=False):
     """Generate vulnerability scan report
     
@@ -549,18 +697,25 @@ def generate_report(lead_data, for_web=False):
         network_section += "No open ports detected.\n"
     
     # Gateway check
-    gateway_ip = get_default_gateway_ip()
-    gateway_scan_results = scan_gateway_ports(gateway_ip)
-    
+# Gateway check
+    gateway_info = get_default_gateway_ip()
+    gateway_scan_results = scan_gateway_ports(gateway_info)
+
     gateway_section = "\nGATEWAY SECURITY:\n"
-    gateway_section += f"Gateway IP: {gateway_ip}\n"
-    
+    # Add the enhanced gateway info to the report
+    gateway_section += f"{gateway_info}\n\n"
+    gateway_section += "Note: In a web environment, we cannot directly access your gateway.\n"
+    gateway_section += "The information above is based on common network configurations.\n\n"
+
+    # Initialize gateway_findings before using it
     gateway_findings = []
     if gateway_scan_results:
         for msg, severity in gateway_scan_results:
             gateway_section += f"- {msg} (Severity: {severity})\n"
             if severity in ["High", "Critical"]:
                 gateway_findings.append(f"Gateway: {severity} severity - {msg}")
+                
+                
     
     # Add recommendations
     recommendations = "\nRECOMMENDATIONS:\n"
@@ -607,51 +762,6 @@ def generate_report(lead_data, for_web=False):
     )
     
     return full_report
-
-def process_scan_request(lead_data):
-    """Process scan request and generate reports
-    
-    Args:
-        lead_data: Dictionary containing user information
-        
-    Returns:
-        A simplified report for web display
-    """
-    try:
-        logging.debug("Starting scan process...")
-        
-        # Save lead data
-        try:
-            save_lead_data(lead_data)
-            logging.debug("Lead data saved successfully")
-        except Exception as e:
-            logging.error(f"Error saving lead data: {e}")
-            # Continue anyway - don't fail the whole scan
-        
-        # Generate detailed report for email
-        detailed_report = generate_report(lead_data, for_web=False)
-        logging.debug(f"Detailed report generated, length: {len(detailed_report)}")
-        
-        # Generate simplified report for web display
-        web_report = generate_report(lead_data, for_web=True)
-        logging.debug(f"Web report generated, length: {len(web_report)}")
-        
-        # Try to send email with detailed report
-        try:
-            email_sent = send_email_report(lead_data, detailed_report)
-            if email_sent:
-                logging.debug("Email report sent successfully")
-            else:
-                logging.warning("Email report could not be sent")
-        except Exception as e:
-            logging.error(f"Error sending email: {e}")
-        
-        # Return the simplified report for web display
-        return web_report
-        
-    except Exception as e:
-        logging.error(f"Error in process_scan_request: {e}")
-        return f"An error occurred during the scan: {str(e)}"
 
 @app.route('/')
 def index():
@@ -793,6 +903,7 @@ def test_email():
             return "Test email failed to send."
     except Exception as e:
         return f"Error in test email: {str(e)}"
+
 
 # API endpoint to check if the service is running
 @app.route('/api/healthcheck')
