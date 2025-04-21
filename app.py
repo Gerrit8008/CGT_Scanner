@@ -686,6 +686,14 @@ def debug():
     
     return jsonify(debug_info)
 
+# In app.py
+@app.route('/api/firewall-test', methods=['POST'])
+def firewall_test():
+    test_results = request.json
+    # Store results in session or database for inclusion in the report
+    session['firewall_test_results'] = test_results
+    return jsonify({"status": "success"})
+
 @app.route('/api/scan', methods=['POST'])    
 @limiter.limit("5 per minute")    
 def start_scan():
