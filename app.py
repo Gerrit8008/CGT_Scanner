@@ -28,10 +28,17 @@ logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 
+# Initialize limiter with proper storage
 limiter = Limiter(
     app,
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"  # Use memory storage for now
+)
+
+# Add a warning log to acknowledge the storage limitation
+logging.warning(
+    "Using in-memory storage for rate limiting. This is not recommended for production."
 )
 
 # Severity levels for vulnerabilities
@@ -583,10 +590,33 @@ def process_scan_request(lead_data):
 def index():
     """Render the home page"""
     try:
+        # Log that we're attempting to render the template
+        logging.debug("Attempting to render index.html")
+        
+        # List available templates for debugging
+        template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
+        if os.path.exists(template_dir):
+            templates = os.listdir(template_dir)
+            logging.debug(f"Available templates: {templates}")
+        else:
+            logging.error(f"Template directory not found: {template_dir}")
+        
         return render_template('index.html')
     except Exception as e:
-        logging.error(f"Error rendering index page: {e}")
-        return f"An error occurred: {e}", 500
+        error_message = f"Error rendering index page: {str(e)}"
+        logging.error(error_message)
+        
+        # Return a simple HTML response with the error
+        return f"""
+        <html>
+            <head><title>Error</title></head>
+            <body>
+                <h1>An error occurred</h1>
+                <p>{error_message}</p>
+                <p>Please contact support.</p>
+            </body>
+        </html>
+        """, 500
 
 @app.route('/scan', methods=['GET', 'POST'])
 def scan_page():
@@ -639,6 +669,22 @@ def results():
     else:
         logging.debug("No scan result in session")
         return redirect(url_for('scan_page'))
+
+@app.route('/debug')
+def debug():
+    """Debug endpoint to check Flask configuration"""
+    
+    debug_info = {
+        "Python Version": sys.version,
+        "Working Directory": os.getcwd(),
+        "Template Folder": app.template_folder,
+        "Templates Exist": os.path.exists(app.template_folder),
+        "Templates Available": os.listdir(app.template_folder) if os.path.exists(app.template_folder) else "N/A",
+        "Environment": app.config['ENV'],
+        "Debug Mode": app.config['DEBUG']
+    }
+    
+    return jsonify(debug_info)
 
 @app.route('/api/scan', methods=['POST'])    
 @limiter.limit("5 per minute")    
