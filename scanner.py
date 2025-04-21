@@ -89,8 +89,8 @@ def send_email_report(lead_data, scan_result):
     """Send lead info and scan result to your email using a mail relay."""
     try:
         # Use environment variables for credentials
-        smtp_user = os.environ.get('SMTP_USER', 'admissions@southgeauga.com')
-        smtp_password = os.environ.get('SMTP_PASSWORD', 'Admissions_1south#')
+        smtp_user = os.environ.get('SMTP_USER')
+        smtp_password = os.environ.get('SMTP_PASSWORD')
         
         logging.debug(f"Attempting to send email with SMTP user: {smtp_user}")
         
