@@ -1,28 +1,33 @@
 # auth.py
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 import os
 import logging
-import uuid
-from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash
-from werkzeug.utils import secure_filename
-from client_db import (
+from datetime import datetime
+
+# Import authentication utilities
+from auth_utils import (
     authenticate_user, verify_session, logout_user, 
-    create_user
+    create_user, register_client
 )
 
-# Create blueprint for authentication routes
+# Create authentication blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Login route
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
+    """User login page"""
     # Check if already logged in
     session_token = session.get('session_token')
     if session_token:
         result = verify_session(session_token)
         if result['status'] == 'success':
-            user = result['user']
-            # Redirect based on role
-            if user['role'] == 'admin':
+            # User is already logged in - redirect based on role
+            if result['user']['role'] == 'admin':
                 return redirect(url_for('admin.dashboard'))
             else:
                 return redirect(url_for('client.dashboard'))
@@ -33,25 +38,26 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        remember = request.form.get('remember', False)
-        next_url = request.form.get('next', '')
         
         if not username or not password:
-            return render_template('auth/login.html', error="Please provide username and password", next=next_url)
-            
-        # Get client IP for security logging
-        ip_address = request.remote_addr
+            flash('Please provide username and password', 'danger')
+            return render_template('auth/login.html', next=next_url)
         
-        # Fixed line: only passing username and password to authenticate_user
-        result = authenticate_user(username, password)
+        # Get client IP and user agent for security logging
+        ip_address = request.remote_addr
+        user_agent = request.headers.get('User-Agent')
+        
+        # Authenticate user
+        result = authenticate_user(username, password, ip_address, user_agent)
         
         if result['status'] == 'success':
-            # Store session token in cookie
+            # Store session token and user info in session
             session['session_token'] = result['session_token']
             session['username'] = result['username']
             session['role'] = result['role']
+            session['user_id'] = result['user_id']
             
-            # Redirect based on next parameter or role
+            # Redirect based on role or next parameter
             if next_url:
                 return redirect(next_url)
             elif result['role'] == 'admin':
@@ -59,78 +65,113 @@ def login():
             else:
                 return redirect(url_for('client.dashboard'))
         else:
-            return render_template('auth/login.html', error=result['message'], next=next_url)
-    
-    # Detect if this is an admin or client login based on URL
-    role = 'Admin' if (request.referrer and '/admin' in request.referrer) or '/admin' in next_url else 'Client'
+            flash(result['message'], 'danger')
+            return render_template('auth/login.html', next=next_url)
     
     # GET request - show login form
-    return render_template('auth/login.html', role=role, next=next_url)
+    return render_template('auth/login.html', next=next_url)
 
 # Logout route
 @auth_bp.route('/logout')
 def logout():
+    """User logout"""
     session_token = session.get('session_token')
     if session_token:
         logout_user(session_token)
-        
+    
     # Clear session
     session.clear()
+    flash('You have been logged out successfully', 'info')
     return redirect(url_for('auth.login'))
 
-# Password reset request route
-@auth_bp.route('/reset-password', methods=['GET', 'POST'])
-
-def reset_password_request():
+# Registration route for clients
+@auth_bp.route('/register', methods=['GET', 'POST'])
+def register():
+    """Client registration page"""
     if request.method == 'POST':
+        # Get user registration data
+        username = request.form.get('username')
         email = request.form.get('email')
-        
-        if not email:
-            return render_template('auth/reset-password-request.html', error="Please provide your email")
-        
-        # Create password reset token
-        from client_db import create_password_reset_token
-        result = create_password_reset_token(email)
-        
-        # Always show success to prevent email enumeration
-        flash('If your email is registered, you will receive reset instructions shortly', 'info')
-        return redirect(url_for('auth.login'))
-    
-    # GET request - show reset password form
-    return render_template('auth/reset-password-request.html')
-
-# Password reset confirmation route
-@auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
-
-def reset_password_confirm(token):
-    # Verify the token
-    from client_db import verify_password_reset_token
-    token_result = verify_password_reset_token(token)
-    
-    if token_result['status'] != 'success':
-        flash('Invalid or expired reset token', 'danger')
-        return redirect(url_for('auth.login'))
-    
-    if request.method == 'POST':
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
+        full_name = request.form.get('full_name', '')
         
-        if not password or password != confirm_password:
-            return render_template('auth/reset-password-confirm.html', 
-                                token=token,
-                                error="Passwords do not match")
+        # Validate input
+        if not username or not email or not password:
+            flash('All fields are required', 'danger')
+            return render_template('auth/register.html')
         
-        # Update the password
-        from client_db import update_user_password
-        result = update_user_password(token_result['user_id'], password)
+        if password != confirm_password:
+            flash('Passwords do not match', 'danger')
+            return render_template('auth/register.html')
         
-        if result['status'] == 'success':
-            flash('Your password has been updated successfully', 'success')
+        # Create user
+        user_result = create_user(username, email, password, 'client', full_name)
+        
+        if user_result['status'] == 'success':
+            # Get business registration data
+            business_data = {
+                'business_name': request.form.get('business_name', ''),
+                'business_domain': request.form.get('business_domain', ''),
+                'contact_email': email,  # Use the same email as user by default
+                'contact_phone': request.form.get('contact_phone', ''),
+                'scanner_name': request.form.get('scanner_name', '')
+            }
+            
+            # Register client
+            if business_data['business_name'] and business_data['business_domain']:
+                client_result = register_client(user_result['user_id'], business_data)
+                
+                if client_result['status'] == 'success':
+                    flash('Registration successful! You can now log in', 'success')
+                else:
+                    flash(f'User created but client registration failed: {client_result["message"]}', 'warning')
+            else:
+                flash('User created successfully. Please log in and complete your client profile', 'success')
+            
             return redirect(url_for('auth.login'))
         else:
-            return render_template('auth/reset-password-confirm.html', 
-                                token=token,
-                                error=result['message'])
+            flash(f'Registration failed: {user_result["message"]}', 'danger')
     
-    # GET request - show reset password form
-    return render_template('auth/reset-password-confirm.html', token=token)
+    # GET request - show registration form
+    return render_template('auth/register.html')
+
+# Client profile completion route
+@auth_bp.route('/complete-profile', methods=['GET', 'POST'])
+def complete_profile():
+    """Complete client profile"""
+    # Check if logged in
+    session_token = session.get('session_token')
+    if not session_token:
+        return redirect(url_for('auth.login'))
+    
+    # Verify session
+    session_result = verify_session(session_token)
+    if session_result['status'] != 'success':
+        # Session invalid - clear and redirect to login
+        session.clear()
+        return redirect(url_for('auth.login'))
+    
+    user = session_result['user']
+    
+    if request.method == 'POST':
+        # Get business data
+        business_data = {
+            'business_name': request.form.get('business_name'),
+            'business_domain': request.form.get('business_domain'),
+            'contact_email': request.form.get('contact_email', user['email']),
+            'contact_phone': request.form.get('contact_phone', ''),
+            'scanner_name': request.form.get('scanner_name', '')
+        }
+        
+        # Register client
+        client_result = register_client(user['user_id'], business_data)
+        
+        if client_result['status'] == 'success':
+            flash('Client profile completed successfully', 'success')
+            return redirect(url_for('client.dashboard'))
+        else:
+            flash(f'Failed to complete profile: {client_result["message"]}', 'danger')
+    
+    # GET request - show profile completion form
+    return render_template('auth/complete_profile.html', user=user)
