@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Profile - Security Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        .profile-container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        
+        .btn {
+            padding: 10px 15px;
+            background-color: #FF6900;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            background-color: #e55d00;
+        }
+        
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .form-row {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .form-row .form-group {
+            width: 48%;
+        }
+        
+        .section-title {
+            margin-top: 20px;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="profile-container">
+        <h2 style="text-align: center;">Complete Your Profile</h2>
+        
+        <p>Hello {{ user.full_name or user.username }}, please complete your business information to set up your client account.</p>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <form method="post" action="{{ url_for('auth.complete_profile') }}">
+            <div class="form-group">
+                <label for="business_name">Business Name*</label>
+                <input type="text" id="business_name" name="business_name" class="form-control" required autofocus>
+            </div>
+            
+            <div class="form-group">
+                <label for="business_domain">Business Domain/Website*</label>
+                <input type="text" id="business_domain" name="business_domain" class="form-control" required placeholder="example.com">
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="contact_email">Contact Email</label>
+                    <input type="email" id="contact_email" name="contact_email" class="form-control" value="{{ user.email }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="contact_phone">Contact Phone</label>
+                    <input type="tel" id="contact_phone" name="contact_phone" class="form-control">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="scanner_name">Scanner Name (Optional)</label>
+                <input type="text" id="scanner_name" name="scanner_name" class="form-control" placeholder="My Security Scanner">
+                <small>Leave blank to use your business name</small>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn">Complete Profile</button>
+            </div>
+        </form>
+    </div>
+</body>
+</html>
