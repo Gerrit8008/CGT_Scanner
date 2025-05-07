@@ -141,6 +141,29 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
 
+def create_app():
+    """Create and configure the Flask application"""
+    
+    # Create app
+    app = Flask(__name__, template_folder='templates')
+    
+    # Other configuration...
+    
+    # Initialize authentication system
+    from init_auth import initialize_authentication
+    initialize_authentication()
+    
+    # Register blueprints
+    from auth import auth_bp
+    from admin import admin_bp
+    from client import client_bp
+    
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(client_bp)
+    
+    return app
+
 def ensure_users_table():
     try:
         conn = sqlite3.connect(CLIENT_DB_PATH)
