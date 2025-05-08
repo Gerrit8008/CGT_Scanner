@@ -211,6 +211,7 @@ def with_transaction(func):
                 conn.close()
     return wrapper
     
+
 @with_transaction
 def register_client(conn, cursor, user_id, business_data):
     """
@@ -230,12 +231,15 @@ def register_client(conn, cursor, user_id, business_data):
         if not business_data.get('business_name') or not business_data.get('business_domain') or not business_data.get('contact_email'):
             return {"status": "error", "message": "Business name, domain, and contact email are required"}
         
-        # Check if user exists
+        # Check if user exists and has client role
         cursor.execute('SELECT id, role FROM users WHERE id = ? AND active = 1', (user_id,))
         user = cursor.fetchone()
         
         if not user:
             return {"status": "error", "message": "User not found or inactive"}
+            
+        if user['role'] != 'client':
+            return {"status": "error", "message": "Only users with client role can register as clients"}
         
         # Check if client already exists for this user
         cursor.execute('SELECT id FROM clients WHERE user_id = ?', (user_id,))
@@ -272,24 +276,19 @@ def register_client(conn, cursor, user_id, business_data):
         
         client_id = cursor.lastrowid
         
-        # Log the action
-        try:
-            cursor.execute('''
-            INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ''', (
-                user_id,
-                'create_client',
-                'client',
-                client_id,
-                json.dumps(business_data),
-                now
-            ))
-        except Exception as log_error:
-            logging.warning(f"Could not add audit log: {str(log_error)}")
-        
-        # Log successful registration
-        logging.info(f"Registered client for user_id {user_id}: {business_data.get('business_name')}")
+        # Log the action for audit trail
+        log_message = f"Client registration: User {user_id} registered client {client_id}"
+        cursor.execute('''
+        INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id,
+            'client_registration',
+            'clients',
+            client_id,
+            log_message,
+            now
+        ))
         
         return {
             "status": "success", 
@@ -299,7 +298,7 @@ def register_client(conn, cursor, user_id, business_data):
         }
         
     except Exception as e:
-        logging.error(f"Client registration error: {str(e)}")
+        logger.error(f"Client registration error: {e}")
         raise  # Re-raise to let the transaction decorator handle it
 
 def get_client_by_user_id(user_id):
