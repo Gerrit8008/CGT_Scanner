@@ -188,6 +188,192 @@ SCHEMA_SQL = """
 -- This can be empty if you're creating tables explicitly in init_client_db
 """
 
+def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=None):
+    """Get list of deployed scanners for a client with pagination and filtering"""
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Calculate offset for pagination
+        offset = (page - 1) * per_page
+        
+        # Base query - CHANGE 'scanners' to 'deployed_scanners'
+        query = "SELECT * FROM deployed_scanners WHERE client_id = ?"
+        params = [client_id]
+        
+        # Apply filters if provided
+        if filters:
+            if 'status' in filters and filters['status']:
+                query += " AND deploy_status = ?"  # Changed 'status' to 'deploy_status'
+                params.append(filters['status'])
+            
+            if 'search' in filters and filters['search']:
+                query += " AND (domain LIKE ? OR subdomain LIKE ?)"  # Changed field names
+                search_term = f"%{filters['search']}%"
+                params.append(search_term)
+                params.append(search_term)
+        
+        # Add sorting and pagination
+        query += " ORDER BY last_updated DESC LIMIT ? OFFSET ?"  # Changed 'created_at' to 'last_updated'
+        params.append(per_page)
+        params.append(offset)
+        
+        # Execute query for scanners
+        cursor.execute(query, params)
+        scanners = [dict(row) for row in cursor.fetchall()]
+        
+        # Get total count for pagination
+        count_query = "SELECT COUNT(*) FROM deployed_scanners WHERE client_id = ?"  # Changed table name
+        count_params = [client_id]
+        
+        # Apply the same filters to count query
+        if filters:
+            if 'status' in filters and filters['status']:
+                count_query += " AND deploy_status = ?"  # Changed field name
+                count_params.append(filters['status'])
+            
+            if 'search' in filters and filters['search']:
+                count_query += " AND (domain LIKE ? OR subdomain LIKE ?)"  # Changed field names
+                search_term = f"%{filters['search']}%"
+                count_params.append(search_term)
+                count_params.append(search_term)
+        
+        cursor.execute(count_query, count_params)
+        total_count = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        # Calculate pagination metadata
+        total_pages = (total_count + per_page - 1) // per_page  # Ceiling division
+        
+        return {
+            'scanners': scanners,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total_count': total_count,
+                'total_pages': total_pages
+            }
+        }
+    except Exception as e:
+        logging.error(f"Error retrieving scanners for client: {e}")
+        return {
+            'scanners': [],
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total_count': 0,
+                'total_pages': 0
+            }
+        }
+
+def get_scan_history_by_client_id(client_id, limit=None):
+    """Get scan history for a client"""
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # First check if scan_history table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scan_history'")
+        if not cursor.fetchone():
+            # Fall back to scans table instead
+            base_query = "SELECT * FROM scans WHERE target LIKE ? ORDER BY timestamp DESC"
+            
+            # Get client domain
+            cursor.execute("SELECT business_domain FROM clients WHERE id = ?", (client_id,))
+            client = cursor.fetchone()
+            
+            if client and client['business_domain']:
+                domain = f"%{client['business_domain']}%"
+                params = [domain]
+            else:
+                # If no domain found, return empty list
+                conn.close()
+                return []
+        else:
+            # Check if client_id column exists in scan_history
+            cursor.execute("PRAGMA table_info(scan_history)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'client_id' in columns:
+                base_query = "SELECT * FROM scan_history WHERE client_id = ? ORDER BY timestamp DESC"
+                params = [client_id]
+            else:
+                # Fall back to scans table
+                base_query = "SELECT * FROM scans WHERE target LIKE ? ORDER BY timestamp DESC"
+                
+                # Get client domain
+                cursor.execute("SELECT business_domain FROM clients WHERE id = ?", (client_id,))
+                client = cursor.fetchone()
+                
+                if client and client['business_domain']:
+                    domain = f"%{client['business_domain']}%"
+                    params = [domain]
+                else:
+                    # If no domain found, return empty list
+                    conn.close()
+                    return []
+        
+        # Add limit if provided
+        if limit:
+            base_query += " LIMIT ?"
+            params.append(limit)
+        
+        cursor.execute(base_query, params)
+        scan_history = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        return scan_history
+    except Exception as e:
+        logging.error(f"Error retrieving scan history for client: {e}")
+        return []
+
+@client_bp.route('/dashboard')
+@client_required
+def dashboard(user):
+    """Client dashboard"""
+    try:
+        # Get client info for this user
+        from client_db import get_client_by_user_id
+        client = get_client_by_user_id(user['user_id'])
+        
+        if not client:
+            # Client record doesn't exist yet - redirect to complete profile
+            logger.info(f"User {user['username']} has no client profile, redirecting to complete_profile")
+            flash('Please complete your client profile', 'info')
+            return redirect(url_for('auth.complete_profile'))
+        
+        # Get client's scanners
+        from client_db import get_deployed_scanners_by_client_id
+        scanners = get_deployed_scanners_by_client_id(client['id'])
+        
+        # Get scan history
+        from client_db import get_scan_history_by_client_id
+        scan_history = get_scan_history_by_client_id(client['id'], limit=5)
+        
+        # Count total scans
+        total_scans = len(get_scan_history_by_client_id(client['id']))
+        
+        # Pass client as user_client for template compatibility
+        return render_template(
+            'client/client-dashboard.html',
+            user=user,
+            client=client,
+            user_client=client,  # Add this line to make user_client available
+            scanners=scanners.get('scanners', []),
+            scan_history=scan_history,
+            total_scans=total_scans
+        )
+    except Exception as e:
+        logger.error(f"Error displaying client dashboard: {str(e)}")
+        # Pass empty user_client to avoid template errors
+        return render_template('client/client-dashboard.html', 
+                              user=user, 
+                              error=str(e),
+                              user_client={})  # Add this to provide an empty user_client
+        
 def with_transaction(func):
     """Decorator for database transactions with proper error handling"""
     @wraps(func)
