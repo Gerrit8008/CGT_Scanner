@@ -558,7 +558,6 @@ def regenerate_api_key(client_id):
         }
 
 @with_transaction
-
 def register_client(user_id, business_data):
     """
     Register a client for a user
@@ -728,6 +727,158 @@ def init_db():
         logging.error(f"Error initializing database: {e}")
         logging.debug(traceback.format_exc())
         return False
+
+def init_client_db():
+    """Initialize the client database with proper schema and error handling"""
+    try:
+        # Create directory if it doesn't exist
+        db_dir = os.path.dirname(CLIENT_DB_PATH)
+        os.makedirs(db_dir, exist_ok=True)
+        
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
+        
+        # Create users table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            role TEXT DEFAULT 'client',
+            full_name TEXT,
+            created_at TEXT,
+            last_login TEXT,
+            active INTEGER DEFAULT 1
+        )
+        ''')
+        
+        # Create sessions table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_token TEXT UNIQUE NOT NULL,
+            created_at TEXT,
+            expires_at TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        ''')
+        
+        # Create clients table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            business_name TEXT NOT NULL,
+            business_domain TEXT NOT NULL,
+            contact_email TEXT NOT NULL,
+            contact_phone TEXT,
+            scanner_name TEXT,
+            subscription_level TEXT DEFAULT 'basic',
+            subscription_status TEXT DEFAULT 'active',
+            subscription_start TEXT,
+            subscription_end TEXT,
+            api_key TEXT UNIQUE,
+            created_at TEXT,
+            created_by INTEGER,
+            updated_at TEXT,
+            updated_by INTEGER,
+            active INTEGER DEFAULT 1,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            FOREIGN KEY (updated_by) REFERENCES users(id)
+        )
+        ''')
+        
+        # Create customizations table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS customizations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            primary_color TEXT,
+            secondary_color TEXT,
+            logo_path TEXT,
+            favicon_path TEXT,
+            email_subject TEXT,
+            email_intro TEXT,
+            email_footer TEXT,
+            default_scans TEXT,  -- JSON array of default scan types
+            css_override TEXT,
+            html_override TEXT,
+            last_updated TEXT,
+            updated_by INTEGER,
+            FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id)
+        )
+        ''')
+        
+        # Create deployed_scanners table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS deployed_scanners (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            subdomain TEXT UNIQUE,
+            domain TEXT,
+            deploy_status TEXT,
+            deploy_date TEXT,
+            last_updated TEXT,
+            config_path TEXT,
+            template_version TEXT,
+            FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+        )
+        ''')
+        
+        # Create scan_history table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS scan_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            scan_id TEXT UNIQUE NOT NULL,
+            timestamp TEXT,
+            target TEXT,
+            scan_type TEXT,
+            status TEXT,
+            report_path TEXT,
+            FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+        )
+        ''')
+        
+        # Create audit_log table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            action TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            changes TEXT,
+            timestamp TEXT NOT NULL,
+            ip_address TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+        ''')
+        
+        # Create indices for better performance
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_clients_api_key ON clients(api_key)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token)')
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info("Client database initialized successfully")
+        return {"status": "success", "message": "Database initialized successfully"}
+    
+    except Exception as e:
+        logger.error(f"Error initializing client database: {e}")
+        return {"status": "error", "message": f"Failed to initialize database: {str(e)}"}
+        
 def ensure_full_name_column():
     """Ensure the full_name column exists in the users table"""
     try:
