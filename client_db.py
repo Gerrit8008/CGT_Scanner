@@ -9,7 +9,10 @@ import uuid
 import hashlib
 import secrets
 from datetime import datetime, timedelta
-from functools import wraps
+import functools
+
+# Define database path
+CLIENT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_scanner.db')
 
 # Configure logging
 logging.basicConfig(
@@ -20,9 +23,7 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
-# Define database path
-CLIENT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_scanner.db')
+logger = logging.getLogger(__name__)
 
 # Create the schema string for initialization
 SCHEMA_SQL = """
@@ -186,6 +187,29 @@ SCHEMA_SQL = """
 -- This can be empty if you're creating tables explicitly in init_client_db
 """
 
+def with_transaction(func):
+    """Decorator for database transactions with proper error handling"""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        conn = None
+        try:
+            conn = sqlite3.connect(CLIENT_DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            result = func(conn, cursor, *args, **kwargs)
+            conn.commit()
+            return result
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logging.error(f"Database error in {func.__name__}: {e}")
+            logging.debug(traceback.format_exc())
+            return {"status": "error", "message": str(e)}
+        finally:
+            if conn:
+                conn.close()
+    return wrapper
+    
 @with_transaction
 def register_client(conn, cursor, user_id, business_data):
     """
