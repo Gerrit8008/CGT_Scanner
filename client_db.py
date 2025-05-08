@@ -181,6 +181,103 @@ CREATE INDEX IF NOT EXISTS idx_clients_api_key ON clients(api_key);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token);
 """
 
+def register_client(user_id, business_data):
+    """
+    Register a client for a user
+    
+    Args:
+        user_id (int): User ID
+        business_data (dict): Business information
+        
+    Returns:
+        dict: Client registration result
+    """
+    try:
+        # Check for required fields
+        if not business_data.get('business_name') or not business_data.get('business_domain') or not business_data.get('contact_email'):
+            return {"status": "error", "message": "Business name, domain, and contact email are required"}
+        
+        # Connect to database
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # First check if the user exists and has client role
+        cursor.execute('SELECT id, role FROM users WHERE id = ? AND active = 1', (user_id,))
+        user = cursor.fetchone()
+        
+        if not user:
+            conn.close()
+            return {"status": "error", "message": "User not found or inactive"}
+            
+        if user['role'] != 'client':
+            conn.close()
+            return {"status": "error", "message": "Only users with client role can register as clients"}
+        
+        # Check if client already exists for this user
+        cursor.execute('SELECT id FROM clients WHERE user_id = ?', (user_id,))
+        existing_client = cursor.fetchone()
+        
+        if existing_client:
+            conn.close()
+            return {"status": "error", "message": "Client already registered for this user"}
+        
+        # Generate API key
+        api_key = secrets.token_hex(16)
+        
+        # Insert client record
+        now = datetime.now().isoformat()
+        cursor.execute('''
+        INSERT INTO clients (
+            user_id, business_name, business_domain, contact_email, contact_phone,
+            scanner_name, subscription_level, subscription_status, subscription_start,
+            api_key, created_at, created_by, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ''', (
+            user_id,
+            business_data.get('business_name'),
+            business_data.get('business_domain'),
+            business_data.get('contact_email'),
+            business_data.get('contact_phone', ''),
+            business_data.get('scanner_name', business_data.get('business_name') + ' Scanner'),
+            business_data.get('subscription_level', 'basic'),
+            'active',
+            now,
+            api_key,
+            now,
+            user_id
+        ))
+        
+        client_id = cursor.lastrowid
+        
+        # Log the action for audit trail
+        log_message = f"Client registration: User {user_id} registered client {client_id}"
+        cursor.execute('''
+        INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id,
+            'client_registration',
+            'clients',
+            client_id,
+            log_message,
+            now
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "status": "success", 
+            "client_id": client_id, 
+            "message": "Client registered successfully",
+            "api_key": api_key
+        }
+        
+    except Exception as e:
+        logger.error(f"Client registration error: {e}")
+        return {"status": "error", "message": f"Failed to register client: {str(e)}"}
+
 def get_client_by_user_id(user_id):
     """Get client details by user ID"""
     try:
