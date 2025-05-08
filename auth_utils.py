@@ -168,6 +168,14 @@ def verify_session(session_token):
             except Exception as e:
                 logger.warning(f"Error parsing expiry date: {e}")
         
+        # FIX: Convert SQLite Row to a dictionary or check for the attribute differently
+        # Option 1: Get full_name safely
+        full_name = ''
+        try:
+            full_name = session['full_name']
+        except (KeyError, IndexError):
+            pass
+        
         # Return success with user info
         result = {
             "status": "success",
@@ -176,7 +184,7 @@ def verify_session(session_token):
                 "username": session['username'],
                 "email": session['email'],
                 "role": session['role'],
-                "full_name": session.get('full_name', '')
+                "full_name": full_name  # Use the safely retrieved value
             }
         }
         
