@@ -1,8 +1,8 @@
 # admin.py
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Import authentication utilities
 from auth_utils import verify_session
@@ -43,18 +43,25 @@ def admin_required(f):
 def dashboard(user):
     """Admin dashboard"""
     # Get summary stats
-    from client_db import get_dashboard_summary
+    from client_db import get_dashboard_summary, list_clients
     summary = get_dashboard_summary()
     
-    # Get recent clients
-    from client_db import list_clients
-    recent_clients = list_clients(page=1, per_page=5).get('clients', [])
+    # Get recent clients (specifically getting new clients registered in the past month)
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+    new_clients = list_clients(
+        page=1, 
+        per_page=5, 
+        filters={'created_after': thirty_days_ago},
+        sort_by='created_at',
+        sort_order='desc'
+    ).get('clients', [])
     
     return render_template(
         'admin/admin-dashboard.html',
         user=user,
         summary=summary,
-        recent_clients=recent_clients
+        recent_clients=new_clients,
+        new_clients=new_clients  # Add the specific new clients list
     )
 
 # User management
@@ -66,43 +73,137 @@ def user_list(user):
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     
+    # Get filter parameters
+    filters = {}
+    if 'role' in request.args and request.args.get('role'):
+        filters['role'] = request.args.get('role')
+    if 'search' in request.args and request.args.get('search'):
+        filters['search'] = request.args.get('search')
+    if 'status' in request.args and request.args.get('status') and request.args.get('status') != 'all':
+        filters['active'] = request.args.get('status') == 'active'
+    
     # Get users
     from client_db import list_users
-    users = list_users(page, per_page)
+    users = list_users(page, per_page, filters)
     
     return render_template(
         'admin/user-management.html',
         user=user,
         users=users.get('users', []),
-        pagination=users.get('pagination', {})
+        pagination=users.get('pagination', {}),
+        role_filter=filters.get('role', ''),
+        search=filters.get('search', '')
     )
 
-# Client management
-@admin_bp.route('/clients')
+# User creation route
+@admin_bp.route('/users/create', methods=['GET', 'POST'])
 @admin_required
-def client_list(user):
-    """Client management"""
-    # Get pagination parameters
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
+def user_create(user):
+    """Create new user"""
+    if request.method == 'POST':
+        # Process form submission
+        from client_db import create_user
+        
+        # Extract form data
+        user_data = {
+            'username': request.form.get('username'),
+            'email': request.form.get('email'),
+            'password': request.form.get('password'),
+            'role': request.form.get('role', 'client'),
+            'full_name': request.form.get('full_name', '')
+        }
+        
+        # Validate form data
+        if not user_data['username'] or not user_data['email'] or not user_data['password']:
+            flash('All required fields must be filled', 'danger')
+            return render_template('admin/user-create.html', form_data=user_data)
+            
+        # Check password confirmation
+        if request.form.get('password') != request.form.get('confirm_password'):
+            flash('Passwords do not match', 'danger')
+            return render_template('admin/user-create.html', form_data=user_data)
+        
+        # Create the user
+        result = create_user(
+            user_data['username'],
+            user_data['email'],
+            user_data['password'],
+            user_data['role'],
+            user_data['full_name']
+        )
+        
+        if result.get('status') == 'success':
+            flash('User created successfully', 'success')
+            return redirect(url_for('admin.user_list'))
+        else:
+            flash(f'Error creating user: {result.get("message", "Unknown error")}', 'danger')
+            return render_template('admin/user-create.html', form_data=user_data)
     
-    # Get filter parameters
-    filters = {}
-    if 'subscription' in request.args:
-        filters['subscription'] = request.args.get('subscription')
-    if 'status' in request.args:
-        filters['status'] = request.args.get('status')
-    if 'search' in request.args:
-        filters['search'] = request.args.get('search')
+    # GET request - render form
+    return render_template('admin/user-create.html', user=user)
+
+@admin_bp.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
+@admin_required
+def user_edit(user, user_id):
+    """Edit existing user"""
+    from client_db import get_user_by_id, update_user
     
-    # Get clients
-    from client_db import list_clients
-    clients = list_clients(page, per_page, filters)
+    # Get user data
+    target_user = get_user_by_id(user_id)
+    if not target_user:
+        flash('User not found', 'danger')
+        return redirect(url_for('admin.user_list'))
     
-    return render_template(
-        'admin/client-management.html',
-        user=user,
-        clients=clients.get('clients', []),
-        pagination=clients.get('pagination', {}),
-        filters=filters
-    )
+    if request.method == 'POST':
+        # Process form submission
+        user_data = {
+            'username': request.form.get('username'),
+            'email': request.form.get('email'),
+            'role': request.form.get('role', 'client'),
+            'full_name': request.form.get('full_name', ''),
+            'active': 1 if request.form.get('active') else 0
+        }
+        
+        # Check if password is being updated
+        password = request.form.get('password')
+        if password and password.strip():
+            # Validate password confirmation
+            if password != request.form.get('confirm_password'):
+                flash('Passwords do not match', 'danger')
+                return render_template('admin/user-edit.html', user=user, edit_user=target_user)
+            
+            user_data['password'] = password
+        
+        # Update the user
+        result = update_user(user_id, user_data)
+        
+        if result.get('status') == 'success':
+            flash('User updated successfully', 'success')
+            return redirect(url_for('admin.user_list'))
+        else:
+            flash(f'Error updating user: {result.get("message", "Unknown error")}', 'danger')
+            return render_template('admin/user-edit.html', user=user, edit_user=target_user)
+    
+    # GET request - render form
+    return render_template('admin/user-edit.html', user=user, edit_user=target_user)
+
+@admin_bp.route('/users/<int:user_id>/delete', methods=['POST'])
+@admin_required
+def user_delete(user, user_id):
+    """Delete/deactivate user"""
+    from client_db import deactivate_user
+    
+    # Cannot delete yourself
+    if user_id == user['id']:
+        flash('You cannot delete your own account', 'danger')
+        return redirect(url_for('admin.user_list'))
+    
+    # Deactivate the user
+    result = deactivate_user(user_id)
+    
+    if result.get('status') == 'success':
+        flash('User deleted successfully', 'success')
+    else:
+        flash(f'Error deleting user: {result.get("message", "Unknown error")}', 'danger')
+    
+    return redirect(url_for('admin.user_list'))
