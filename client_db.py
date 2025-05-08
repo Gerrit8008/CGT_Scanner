@@ -757,10 +757,6 @@ def init_db():
 def init_client_db(conn, cursor):
     """Initialize the database with required tables and indexes"""
     try:
-        # Execute the schema SQL to create tables and indices
-        cursor.executescript(SCHEMA_SQL)
-        logging.info("Database schema initialized successfully.")
-        
         # Create users table if not exists
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -915,7 +911,7 @@ def init_client_db(conn, cursor):
             logging.info("Admin user created. Please change the default password.")
             
         return {"status": "success", "message": "Database initialized successfully"}
-    except sqlite3.DatabaseError as e:
+    except Exception as e:
         logging.error(f"Database error during initialization: {e}")
         raise
         
