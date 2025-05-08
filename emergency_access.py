@@ -1,11 +1,3 @@
-@function_calls
-@invoke name="artifacts"
-@parameter name="command" create
-@parameter name="id" emergency_access
-@parameter name="type" application/vnd.ant.code
-@parameter name="language" python
-@parameter name="title" emergency_access.py
-@parameter name="content"
 # emergency_access.py - Standalone emergency access module
 from flask import Blueprint, request, redirect, url_for, render_template, session, flash
 import os
