@@ -1,11 +1,3 @@
-@function_calls
-@invoke name="artifacts"
-@parameter name="command" create
-@parameter name="id" auth_fix
-@parameter name="type" application/vnd.ant.code
-@parameter name="language" python
-@parameter name="title" Fixed auth.py
-@parameter name="content"
 # auth.py
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 import os
@@ -183,5 +175,3 @@ def complete_profile():
     
     # GET request - show profile completion form
     return render_template('auth/complete_profile.html', user=user)
-@invoke
-@function_calls
