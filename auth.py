@@ -1,4 +1,5 @@
-# auth.py
+# This updated auth.py version fixes the user routing based on roles
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 import os
 import logging
@@ -107,7 +108,7 @@ def register():
             flash('Passwords do not match', 'danger')
             return render_template('auth/register.html')
         
-        # Create user with client role (never admin)
+        # IMPORTANT: Create user with client role (never admin)
         user_role = 'client'  # Force client role for registration
         user_result = create_user(username, email, password, user_role, full_name)
         
@@ -134,6 +135,7 @@ def register():
                 flash('User created successfully. Please log in and complete your client profile', 'success')
             
             # Redirect to login after successful registration
+            # The login function will then direct them to the client dashboard
             return redirect(url_for('auth.login'))
         else:
             flash(f'Registration failed: {user_result["message"]}', 'danger')
@@ -158,6 +160,13 @@ def complete_profile():
         return redirect(url_for('auth.login'))
     
     user = session_result['user']
+    
+    # Ensure user has client role
+    if user['role'] != 'client':
+        flash('This area is for clients only', 'danger')
+        if user['role'] == 'admin':
+            return redirect(url_for('admin.dashboard'))
+        return redirect(url_for('auth.login'))
     
     if request.method == 'POST':
         # Get business data
