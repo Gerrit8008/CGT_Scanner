@@ -6,16 +6,32 @@
     <title>Login - Security Scanner</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <style>
-        /* Additional login page styles that won't affect functionality */
         .login-container {
             animation: fadeIn 0.5s ease-in;
             border-top: 4px solid var(--primary-color);
+            text-align: center;
+        }
+        
+        .logo-container {
+            margin-bottom: 1.5rem;
+        }
+        
+        .logo {
+            max-width: 150px;
+            height: auto;
+            margin: 0 auto 1rem;
         }
         
         .login-container h2 {
             margin-bottom: 1.5rem;
             color: var(--primary-color);
             text-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        
+        .login-form {
+            text-align: left;
+            max-width: 100%;
+            margin: 0 auto;
         }
         
         .login-container .form-group label {
@@ -66,10 +82,25 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             animation: fadeIn 0.5s ease-in;
         }
+        
+        .remember-me-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .remember-me-container input {
+            margin: 0;
+        }
     </style>
 </head>
 <body>
     <div class="login-container">
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Company Logo" class="logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjUwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIzMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE4IiBmaWxsPSIjRkY2OTAwIj5TZWN1cml0eSBTY2FubmVyPC90ZXh0Pjwvc3ZnPg==';">
+        </div>
+        
         <h2>{{ role|default('User') }} Login</h2>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -80,7 +111,7 @@
             {% endif %}
         {% endwith %}
         
-        <form method="post" action="{{ url_for('auth.login') }}">
+        <form method="post" action="{{ url_for('auth.login') }}" class="login-form">
             {% if next %}
                 <input type="hidden" name="next" value="{{ next }}">
             {% endif %}
@@ -95,9 +126,9 @@
                 <input type="password" id="password" name="password" class="form-control" required>
             </div>
             
-            <div class="form-group">
-                <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: normal; cursor: pointer;">
-                    <input type="checkbox" name="remember" style="margin: 0;"> Remember me
+            <div class="form-group remember-me-container">
+                <label style="margin: 0; font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" name="remember"> Remember me
                 </label>
             </div>
             
