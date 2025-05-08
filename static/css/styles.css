@@ -1023,21 +1023,53 @@ body {
     border-radius: 30px;
 }
 
-.login-container {
-    max-width: 400px;
-    margin: 80px auto;
-    padding: 30px;
-    background-color: var(--card-bg);
-    border-radius: 12px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+.login-container .icon-circle {
+    margin: 0 auto 1.5rem;
+    width: 70px;
+    height: 70px;
+    font-size: 2rem;
 }
 
-.login-container h2 {
-    text-align: center;
+.login-container a {
     color: var(--primary-color);
-    margin-bottom: 25px;
+    text-decoration: none;
+    transition: color 0.3s ease;
 }
 
-.login-container .form-group {
-    margin-bottom: 20px;
+.login-container a:hover {
+    color: var(--primary-dark);
+    text-decoration: underline;
+}
+
+.login-container .form-label {
+    font-weight: 600;
+    color: var(--secondary-color);
+}
+
+.login-container .form-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.login-container .alert {
+    border-radius: 8px;
+    animation: fadeIn 0.5s ease-in;
+}
+
+.login-container .btn {
+    margin-top: 1rem;
+}
+
+.mt-3 {
+    margin-top: 1rem;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-muted {
+    color: var(--secondary-color);
+    font-size: 0.9rem;
 }
