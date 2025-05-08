@@ -1,6 +1,13 @@
-#!/usr/bin/env python3
+```python
+@function_calls
+@invoke name="artifacts"
+@parameter name="command" create
+@parameter name="id" emergency_access
+@parameter name="type" application/vnd.ant.code
+@parameter name="language" python
+@parameter name="title" emergency_access.py
+@parameter name="content"
 # emergency_access.py - Standalone emergency access module
-
 from flask import Blueprint, request, redirect, url_for, render_template, session, flash
 import os
 import sqlite3
@@ -107,29 +114,7 @@ def emergency_login():
             # Redirect based on role
             flash("Emergency login successful!", "success")
             if user['role'] == 'admin':
-                # Instead of redirect, let's give them links
-                return f"""
-                <html>
-                    <head>
-                        <title>Emergency Login Successful</title>
-                        <style>
-                            body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }}
-                            h1 {{ color: green; }}
-                            a {{ display: block; margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 5px; text-decoration: none; color: #333; }}
-                            a:hover {{ background: #e5e5e5; }}
-                            p {{ margin-bottom: 20px; }}
-                        </style>
-                    </head>
-                    <body>
-                        <h1>Emergency Login Successful!</h1>
-                        <p>You are logged in as <strong>{username}</strong> with role <strong>{user['role']}</strong>.</p>
-                        <p>To avoid issues with redirects, please use these direct links:</p>
-                        <a href="/admin_simplified">Go to Simplified Admin Dashboard</a>
-                        <a href="/scan">Go to Scanner</a>
-                        <a href="/">Go to Home</a>
-                    </body>
-                </html>
-                """
+                return redirect(url_for('admin.dashboard'))
             else:
                 return redirect(url_for('client.dashboard'))
                 
@@ -239,212 +224,9 @@ def emergency_login():
     </html>
     '''
 
-@emergency_bp.route('/admin_simplified')
-def admin_simplified():
-    """Simplified admin view for emergency access"""
-    session_token = session.get('session_token')
-    username = session.get('username', 'Unknown')
-    role = session.get('role', 'Unknown')
-    
-    # Very simple session check
-    if not session_token or role != 'admin':
-        return """
-        <h1>Access Denied</h1>
-        <p>You need to be logged in as an admin.</p>
-        <a href="/emergency-login">Login</a>
-        """
-    
-    try:
-        # Get summary info
-        import sqlite3
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # Get client count
-        cursor.execute("SELECT COUNT(*) FROM clients")
-        client_count = cursor.fetchone()[0]
-        
-        # Get user count
-        cursor.execute("SELECT COUNT(*) FROM users")
-        user_count = cursor.fetchone()[0]
-        
-        # Get recent clients
-        cursor.execute("SELECT id, business_name, contact_email FROM clients ORDER BY id DESC LIMIT 5")
-        recent_clients = [dict(row) for row in cursor.fetchall()]
-        
-        # Get recent users
-        cursor.execute("SELECT id, username, email, role FROM users ORDER BY id DESC LIMIT 5")
-        recent_users = [dict(row) for row in cursor.fetchall()]
-        
-        conn.close()
-        
-        # Create a simple dashboard HTML
-        return f"""
-        <html>
-            <head>
-                <title>Simplified Admin Dashboard</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    .card {{ border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-bottom: 20px; }}
-                    .section {{ margin-bottom: 30px; }}
-                    table {{ width: 100%; border-collapse: collapse; }}
-                    th, td {{ text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }}
-                    th {{ background-color: #f2f2f2; }}
-                </style>
-            </head>
-            <body>
-                <h1>Simplified Admin Dashboard</h1>
-                <p>Logged in as: {username} (Role: {role})</p>
-                
-                <div class="section">
-                    <h2>Summary</h2>
-                    <div style="display: flex; gap: 20px;">
-                        <div class="card">
-                            <h3>Clients</h3>
-                            <p style="font-size: 24px;">{client_count}</p>
-                        </div>
-                        <div class="card">
-                            <h3>Users</h3>
-                            <p style="font-size: 24px;">{user_count}</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="section">
-                    <h2>Recent Clients</h2>
-                    <table>
-                        <tr>
-                            <th>ID</th>
-                            <th>Business Name</th>
-                            <th>Email</th>
-                        </tr>
-                        {''.join([f'<tr><td>{c["id"]}</td><td>{c["business_name"]}</td><td>{c["contact_email"]}</td></tr>' for c in recent_clients])}
-                    </table>
-                </div>
-                
-                <div class="section">
-                    <h2>Recent Users</h2>
-                    <table>
-                        <tr>
-                            <th>ID</th>
-                            <th>Username</th>
-                            <th>Email</th>
-                            <th>Role</th>
-                        </tr>
-                        {''.join([f'<tr><td>{u["id"]}</td><td>{u["username"]}</td><td>{u["email"]}</td><td>{u["role"]}</td></tr>' for u in recent_users])}
-                    </table>
-                </div>
-                
-                <div>
-                    <a href="/emergency-login">Back to Emergency Login</a>
-                </div>
-            </body>
-        </html>
-        """
-    except Exception as e:
-        return f"""
-        <h1>Error</h1>
-        <p>An error occurred: {str(e)}</p>
-        <a href="/emergency-login">Back to Emergency Login</a>
-        """
-
-@emergency_bp.route('/direct_fix')
-def direct_fix():
-    """Direct database fix route"""
-    try:
-        # Import our fix function
-        from db_fix import fix_database
-        
-        # Run the fix
-        result = fix_database()
-        
-        if result:
-            return """
-            <html>
-                <head>
-                    <title>Database Fix Successful</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; }
-                        h1 { color: green; }
-                        .next-steps { margin-top: 20px; }
-                    </style>
-                </head>
-                <body>
-                    <h1>Database Fix Successful!</h1>
-                    <p>The database has been fixed successfully.</p>
-                    <div class="next-steps">
-                        <h2>Next Steps</h2>
-                        <p>You can now login with:</p>
-                        <ul>
-                            <li><strong>Username:</strong> admin</li>
-                            <li><strong>Password:</strong> admin123</li>
-                        </ul>
-                        <p><a href="/emergency-login">Go to Emergency Login</a></p>
-                    </div>
-                </body>
-            </html>
-            """
-        else:
-            return """
-            <html>
-                <head>
-                    <title>Database Fix Failed</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; }
-                        h1 { color: red; }
-                    </style>
-                </head>
-                <body>
-                    <h1>Database Fix Failed</h1>
-                    <p>The database fix operation failed. Please check the logs for more information.</p>
-                    <p><a href="/emergency-login">Go to Emergency Login</a></p>
-                </body>
-            </html>
-            """
-    except ImportError:
-        return """
-        <html>
-            <head>
-                <title>Fix Script Not Found</title>
-                <style>
-                    body { font-family: Arial, sans-serif; padding: 20px; }
-                    h1 { color: orange; }
-                    pre { background: #f5f5f5; padding: 15px; }
-                </style>
-            </head>
-            <body>
-                <h1>Fix Script Not Found</h1>
-                <p>The db_fix.py script was not found. Please make sure you've created this file.</p>
-                <p>You can copy and paste the code from the chat to create the file, or use the direct fix below:</p>
-                <p><a href="/db_fix">Run Direct Database Fix</a></p>
-            </body>
-        </html>
-        """
-    except Exception as e:
-        import traceback
-        return f"""
-        <html>
-            <head>
-                <title>Error Running Fix</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; padding: 20px; }}
-                    h1 {{ color: red; }}
-                    pre {{ background: #f5f5f5; padding: 15px; overflow: auto; }}
-                </style>
-            </head>
-            <body>
-                <h1>Error Running Fix</h1>
-                <p>An error occurred while trying to run the database fix:</p>
-                <p>{str(e)}</p>
-                <pre>{traceback.format_exc()}</pre>
-                <p><a href="/emergency-login">Go to Emergency Login</a></p>
-            </body>
-        </html>
-        """
-
 @emergency_bp.route('/db_fix')
 def direct_db_fix():
+    """Direct database fix route for emergency repair"""
     results = []
     try:
         # Import necessary modules
@@ -453,13 +235,13 @@ def direct_db_fix():
         import hashlib
         from datetime import datetime
         
-        # Define database path - make sure this matches your actual database path
-        CLIENT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_scanner.db')
+        # Define database path
         results.append(f"Working with database at: {CLIENT_DB_PATH}")
         results.append(f"Database exists: {os.path.exists(CLIENT_DB_PATH)}")
         
-        # Connect to the database
+        # Connect to the database or create it if it doesn't exist
         conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         # Check database structure
@@ -467,6 +249,44 @@ def direct_db_fix():
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = cursor.fetchall()
         results.append(f"Found tables: {[table[0] for table in tables]}")
+        
+        # Create users table if needed
+        if 'users' not in [table[0] for table in tables]:
+            results.append("Creating users table...")
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                role TEXT DEFAULT 'client',
+                full_name TEXT,
+                created_at TEXT,
+                last_login TEXT,
+                active INTEGER DEFAULT 1
+            )
+            ''')
+        
+        # Create sessions table if needed
+        if 'sessions' not in [table[0] for table in tables]:
+            results.append("Creating sessions table...")
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                session_token TEXT UNIQUE NOT NULL,
+                created_at TEXT,
+                expires_at TEXT,
+                ip_address TEXT,
+                user_agent TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            ''')
+        
+        # Clear all sessions
+        cursor.execute("DELETE FROM sessions")
+        results.append("Cleared all sessions for a fresh start")
         
         # Create a new admin user with simple password
         results.append("Creating/updating admin user...")
@@ -481,72 +301,7 @@ def direct_db_fix():
             100000
         ).hex()
         
-        # Create users table if it doesn't exist
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            email TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            salt TEXT NOT NULL,
-            role TEXT DEFAULT 'client',
-            full_name TEXT,
-            created_at TEXT,
-            last_login TEXT,
-            active INTEGER DEFAULT 1
-        )
-        ''')
-        
-        # Create sessions table if it doesn't exist
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            session_token TEXT UNIQUE NOT NULL,
-            created_at TEXT,
-            expires_at TEXT,
-            ip_address TEXT,
-            user_agent TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        ''')
-        
-        # Clear all sessions
-        cursor.execute("DELETE FROM sessions")
-        results.append("Cleared all sessions")
-        
         # Check if admin user exists
-        cursor.execute("SELECT id FROM users WHERE username = 'superadmin'")
-        admin_user = cursor.fetchone()
-        
-        if admin_user:
-            # Update existing admin
-            cursor.execute('''
-            UPDATE users SET 
-                password_hash = ?, 
-                salt = ?,
-                role = 'admin',
-                active = 1
-            WHERE username = 'superadmin'
-            ''', (password_hash, salt))
-            results.append("Updated existing superadmin user")
-        else:
-            # Create a new admin user
-            cursor.execute('''
-            INSERT INTO users (
-                username, 
-                email, 
-                password_hash, 
-                salt, 
-                role, 
-                full_name, 
-                created_at, 
-                active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-            ''', ('superadmin', 'superadmin@example.com', password_hash, salt, 'admin', 'Super Administrator', datetime.now().isoformat()))
-            results.append("Created new superadmin user")
-        
-        # Also create a regular admin user
         cursor.execute("SELECT id FROM users WHERE username = 'admin'")
         admin_user = cursor.fetchone()
         
@@ -574,7 +329,7 @@ def direct_db_fix():
                 created_at, 
                 active
             ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-            ''', ('admin', 'admin@example.com', password_hash, salt, 'admin', 'Administrator', datetime.now().isoformat()))
+            ''', ('admin', 'admin@example.com', password_hash, salt, 'admin', 'System Administrator', datetime.now().isoformat()))
             results.append("Created new admin user")
         
         # Commit changes
@@ -584,12 +339,7 @@ def direct_db_fix():
         cursor.execute("SELECT id, username, email, role FROM users WHERE username = 'admin'")
         user = cursor.fetchone()
         if user:
-            results.append(f"Admin user verified: ID={user[0]}, username={user[1]}, email={user[2]}, role={user[3]}")
-        
-        cursor.execute("SELECT id, username, email, role FROM users WHERE username = 'superadmin'")
-        user = cursor.fetchone()
-        if user:
-            results.append(f"Superadmin user verified: ID={user[0]}, username={user[1]}, email={user[2]}, role={user[3]}")
+            results.append(f"Admin user verified: ID={user['id']}, username={user['username']}, email={user['email']}, role={user['role']}")
         
         # Close connection
         conn.close()
@@ -598,11 +348,10 @@ def direct_db_fix():
         results.append("You can now login with:")
         results.append("Username: admin")
         results.append("Password: admin123")
-        results.append("OR")
-        results.append("Username: superadmin")
-        results.append("Password: admin123")
         
         return "<br>".join(results)
     except Exception as e:
+        import traceback
         results.append(f"Error: {str(e)}")
+        results.append(f"<pre>{traceback.format_exc()}</pre>")
         return "<br>".join(results)
