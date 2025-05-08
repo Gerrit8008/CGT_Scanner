@@ -351,11 +351,20 @@ def logout_user(session_token):
         return {"status": "error", "message": f"Logout failed: {str(e)}"}
 
 def create_user(username, email, password, role='client', full_name=None):
-    """Create a new user account"""
-    try:
-        # Ensure tables exist
-        ensure_db_tables()
+    """
+    Create a new user account with enhanced debugging and consistent password hashing
+    
+    Args:
+        username (str): Username for the new user
+        email (str): Email address for the new user
+        password (str): Password for the new user
+        role (str, optional): User role (admin or client). Defaults to 'client'.
+        full_name (str, optional): User's full name. Defaults to None.
         
+    Returns:
+        dict: User creation result
+    """
+    try:
         # Basic validation
         if not username or not email or not password:
             return {"status": "error", "message": "All fields are required"}
@@ -375,12 +384,16 @@ def create_user(username, email, password, role='client', full_name=None):
         
         # Create salt and hash password
         salt = secrets.token_hex(16)
+        
+        # Always use PBKDF2 for new users - more secure
         password_hash = hashlib.pbkdf2_hmac(
             'sha256', 
             password.encode(), 
             salt.encode(), 
             100000  # 100,000 iterations for security
         ).hex()
+        
+        logging.debug(f"Creating user with PBKDF2 hash, salt prefix: {salt[:5]}...")
         
         # Insert new user
         cursor.execute('''
@@ -401,11 +414,12 @@ def create_user(username, email, password, role='client', full_name=None):
         conn.commit()
         conn.close()
         
-        logger.info(f"Created user: {username} with role: {role}")
+        logging.info(f"Created user: {username} with role: {role}")
         return {"status": "success", "user_id": user_id, "message": "User created successfully"}
     
     except Exception as e:
-        logger.error(f"User creation error: {str(e)}")
+        logging.error(f"User creation error: {str(e)}")
+        logging.error(traceback.format_exc())
         return {"status": "error", "message": f"Failed to create user: {str(e)}"}
 
 def create_admin_user(password="admin123"):
