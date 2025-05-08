@@ -280,7 +280,7 @@
                 <!-- Filters -->
                 <div class="card filter-card border-0 shadow-sm">
                     <div class="card-body">
-                        <form method="get" action="{{ url_for('auth.admin_users') }}">
+                        <form method="get" action="{{ url_for('admin.user_list') }}">
                             <div class="row g-3">
                                 <div class="col-md-5">
                                     <div class="input-group">
@@ -416,7 +416,7 @@
                     <nav aria-label="Page navigation">
                         <ul class="pagination">
                             <li class="page-item {% if pagination.page == 1 %}disabled{% endif %}">
-                                <a class="page-link" href="{{ url_for('auth.admin_users', page=pagination.page-1, search=search, role=role_filter) }}" aria-label="Previous">
+                                <a class="page-link" href="{{ url_for('admin.user_list', page=pagination.page-1, search=search, role=role_filter) }}" aria-label="Previous">
                                     <span aria-hidden="true">&laquo;</span>
                                 </a>
                             </li>
@@ -428,13 +428,13 @@
                                     </li>
                                 {% else %}
                                     <li class="page-item">
-                                        <a class="page-link" href="{{ url_for('auth.admin_users', page=page_num, search=search, role=role_filter) }}">{{ page_num }}</a>
+                                        <a class="page-link" href="{{ url_for('admin.user_list', page=page_num, search=search, role=role_filter) }}">{{ page_num }}</a>
                                     </li>
                                 {% endif %}
                             {% endfor %}
                             
                             <li class="page-item {% if pagination.page == pagination.total_pages %}disabled{% endif %}">
-                                <a class="page-link" href="{{ url_for('auth.admin_users', page=pagination.page+1, search=search, role=role_filter) }}" aria-label="Next">
+                                <a class="page-link" href="{{ url_for('admin.user_list', page=pagination.page+1, search=search, role=role_filter) }}" aria-label="Next">
                                     <span aria-hidden="true">&raquo;</span>
                                 </a>
                             </li>
