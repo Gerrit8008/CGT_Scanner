@@ -188,6 +188,23 @@ SCHEMA_SQL = """
 -- This can be empty if you're creating tables explicitly in init_client_db
 """
 
+def with_transaction(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            result = func(conn, *args, **kwargs)
+            conn.commit()
+            return result
+        except Exception as e:
+            conn.rollback()
+            logging.error(f"Transaction error in {func.__name__}: {e}")
+            return {'status': 'error', 'message': str(e)}
+        finally:
+            conn.close()
+    return wrapper
+
 def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=None):
     """Get list of deployed scanners for a client with pagination and filtering"""
     try:
@@ -1621,29 +1638,6 @@ def get_login_stats(conn):
             'recent_logins': recent_logins
         }
     }
-
-def with_transaction(func):
-    """Decorator for database transactions with proper error handling"""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        conn = None
-        try:
-            conn = sqlite3.connect(CLIENT_DB_PATH)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            result = func(conn, cursor, *args, **kwargs)
-            conn.commit()
-            return result
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            logging.error(f"Database error in {func.__name__}: {e}")
-            logging.debug(traceback.format_exc())
-            return {"status": "error", "message": str(e)}
-        finally:
-            if conn:
-                conn.close()
-    return wrapper
     
 def get_client_by_user_id(user_id):
     """
