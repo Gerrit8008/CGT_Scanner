@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Login route
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """User login page with proper parameter handling"""
+    """User login page with proper role-based redirection"""
     # Check if already logged in
     session_token = session.get('session_token')
     if session_token:
@@ -55,12 +55,16 @@ def login():
             session['role'] = result['role']
             session['user_id'] = result['user_id']
             
+            # Log successful login
+            logging.info(f"User {username} (role: {result['role']}) logged in successfully")
+            
             # Redirect based on role or next parameter
             if next_url:
                 return redirect(next_url)
             elif result['role'] == 'admin':
                 return redirect(url_for('admin.dashboard'))
             else:
+                # All non-admin users go to client dashboard
                 return redirect(url_for('client.dashboard'))
         else:
             flash(result['message'], 'danger')
@@ -85,7 +89,7 @@ def logout():
 # Registration route for clients
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
-    """Client registration page"""
+    """Client registration page with proper role-based redirection"""
     if request.method == 'POST':
         # Get user registration data
         username = request.form.get('username')
@@ -103,8 +107,9 @@ def register():
             flash('Passwords do not match', 'danger')
             return render_template('auth/register.html')
         
-        # Create user
-        user_result = create_user(username, email, password, 'client', full_name)
+        # Create user with client role (never admin)
+        user_role = 'client'  # Force client role for registration
+        user_result = create_user(username, email, password, user_role, full_name)
         
         if user_result['status'] == 'success':
             # Get business registration data
@@ -128,6 +133,7 @@ def register():
             else:
                 flash('User created successfully. Please log in and complete your client profile', 'success')
             
+            # Redirect to login after successful registration
             return redirect(url_for('auth.login'))
         else:
             flash(f'Registration failed: {user_result["message"]}', 'danger')
