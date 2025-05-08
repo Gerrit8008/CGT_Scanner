@@ -183,7 +183,15 @@ def authenticate_user_wrapper(username_or_email, password, ip_address=None, user
         return {"status": "error", "message": f"Authentication failed: {str(e)}"}
 
 def verify_session(session_token):
-    """Verify if a session token is valid"""
+    """
+    Verify a session token
+    
+    Args:
+        session_token (str): Session token
+        
+    Returns:
+        dict: Session verification result
+    """
     try:
         if not session_token:
             return {"status": "error", "message": "No session token provided"}
@@ -207,7 +215,7 @@ def verify_session(session_token):
             conn.close()
             return {"status": "error", "message": "Invalid or expired session"}
         
-        # Check if session is expired
+        # Check if session has expired
         if 'expires_at' in session and session['expires_at']:
             try:
                 expires_at = datetime.fromisoformat(session['expires_at'])
@@ -215,10 +223,18 @@ def verify_session(session_token):
                 if now > expires_at:
                     conn.close()
                     return {"status": "error", "message": "Session expired"}
-            except Exception as date_err:
-                logger.warning(f"Error parsing session expiry: {date_err}")
+            except Exception as e:
+                logger.warning(f"Error parsing expiry date: {e}")
         
-        # Return user info
+        # FIX: Convert SQLite Row to a dictionary or check for the attribute differently
+        # Option 1: Get full_name safely
+        full_name = ''
+        try:
+            full_name = session['full_name']
+        except (KeyError, IndexError):
+            pass
+        
+        # Return success with user info
         result = {
             "status": "success",
             "user": {
@@ -226,7 +242,7 @@ def verify_session(session_token):
                 "username": session['username'],
                 "email": session['email'],
                 "role": session['role'],
-                "full_name": session.get('full_name', '')
+                "full_name": full_name  # Use the safely retrieved value
             }
         }
         
@@ -234,7 +250,7 @@ def verify_session(session_token):
         return result
     
     except Exception as e:
-        logger.error(f"Session verification error: {str(e)}")
+        logger.error(f"Session verification error: {e}")
         return {"status": "error", "message": f"Session verification failed: {str(e)}"}
 
 def logout_user(session_token):
