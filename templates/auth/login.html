@@ -5,6 +5,68 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Security Scanner</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        /* Additional login page styles that won't affect functionality */
+        .login-container {
+            animation: fadeIn 0.5s ease-in;
+            border-top: 4px solid var(--primary-color);
+        }
+        
+        .login-container h2 {
+            margin-bottom: 1.5rem;
+            color: var(--primary-color);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        
+        .login-container .form-group label {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            display: block;
+            color: var(--secondary-color);
+        }
+        
+        .login-container .form-control {
+            transition: box-shadow 0.3s ease, border-color 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        .login-container .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(255, 105, 0, 0.2);
+            outline: none;
+        }
+        
+        .login-container .btn {
+            margin-top: 0.5rem;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 3px 6px rgba(255, 105, 0, 0.25);
+        }
+        
+        .login-container .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 12px rgba(255, 105, 0, 0.3);
+        }
+        
+        .register-link a {
+            color: var(--primary-color);
+            font-weight: 600;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .register-link a:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+        
+        /* Alert enhancement */
+        .alert {
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            animation: fadeIn 0.5s ease-in;
+        }
+    </style>
 </head>
 <body>
     <div class="login-container">
@@ -34,8 +96,8 @@
             </div>
             
             <div class="form-group">
-                <label>
-                    <input type="checkbox" name="remember"> Remember me
+                <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: normal; cursor: pointer;">
+                    <input type="checkbox" name="remember" style="margin: 0;"> Remember me
                 </label>
             </div>
             
