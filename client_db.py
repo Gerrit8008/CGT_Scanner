@@ -279,27 +279,58 @@ def register_client(user_id, business_data):
         return {"status": "error", "message": f"Failed to register client: {str(e)}"}
 
 def get_client_by_user_id(user_id):
-    """Get client details by user ID"""
+    """
+    Get client details by user ID with enhanced error handling
+    
+    Args:
+        user_id (int): User ID
+        
+    Returns:
+        dict or None: Client details or None if not found
+    """
     try:
+        if not user_id:
+            logger.warning("get_client_by_user_id called with empty user_id")
+            return None
+            
         conn = sqlite3.connect(CLIENT_DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # Query to get client by user_id
+        # Enhanced query with JOIN to get customization data 
         cursor.execute('''
-            SELECT * FROM clients
-            WHERE user_id = ?
+            SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
+                   cu.default_scans, ds.subdomain, ds.deploy_status
+            FROM clients c
+            LEFT JOIN customizations cu ON c.id = cu.client_id
+            LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
+            WHERE c.user_id = ? AND c.active = 1
         ''', (user_id,))
         
-        client = cursor.fetchone()
+        row = cursor.fetchone()
         conn.close()
         
-        if client:
-            return dict(client)
-        else:
+        if not row:
+            logger.debug(f"No client found for user_id: {user_id}")
             return None
+            
+        # Convert row to dict
+        client_data = dict(row)
+        
+        # Convert default_scans JSON to list if present
+        if client_data.get('default_scans'):
+            try:
+                client_data['default_scans'] = json.loads(client_data['default_scans'])
+            except json.JSONDecodeError:
+                client_data['default_scans'] = []
+        else:
+            client_data['default_scans'] = []
+            
+        logger.debug(f"Successfully retrieved client for user_id: {user_id}")
+        return client_data
+        
     except Exception as e:
-        logging.error(f"Error retrieving client by user ID: {e}")
+        logger.error(f"Error retrieving client by user ID: {e}")
         return None
         
 # Helper function for database transactions
