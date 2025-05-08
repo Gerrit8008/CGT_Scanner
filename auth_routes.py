@@ -19,17 +19,51 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 
 # Initialize tables when the blueprint is registered
-@auth_bp.before_app_first_request
-def initialize_tables():
-    """Initialize user tables before first request"""
+def init_user_tables():
+    """Initialize user tables"""
     try:
-        init_user_tables()
-        logging.info("User tables initialized successfully")
-    except Exception as e:
-        logging.error(f"Error initializing user tables: {str(e)}")
+        # Your implementation here - or use a minimal version:
+        import sqlite3
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
         
-# Make sure the user tables exist
-init_user_tables()
+        # Create users table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            role TEXT DEFAULT 'client',
+            full_name TEXT,
+            created_at TEXT,
+            last_login TEXT,
+            active INTEGER DEFAULT 1
+        )
+        ''')
+        
+        # Create sessions table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_token TEXT UNIQUE NOT NULL,
+            created_at TEXT,
+            expires_at TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        ''')
+        
+        conn.commit()
+        conn.close()
+        logging.info("User tables initialized successfully")
+        return {"status": "success", "message": "User tables initialized"}
+    except Exception as e:
+        logging.error(f"Error initializing user tables: {e}")
+        return {"status": "error", "message": str(e)}
 
 # Middleware to require login
 def login_required(f):
@@ -285,9 +319,18 @@ def get_login_stats():
         }
     }
 
-def init_user_tables():
-    """Simple placeholder function"""
-    return {"status": "success", "message": "Tables already initialized"}
+# NOW call init_user_tables after it's defined
+init_user_tables()
+
+# Initialize tables when the blueprint is registered
+@auth_bp.before_app_first_request
+def initialize_tables():
+    """Initialize user tables before first request"""
+    try:
+        init_user_tables()
+        logging.info("User tables initialized successfully")
+    except Exception as e:
+        logging.error(f"Error initializing user tables: {str(e)}")
     
 # User management routes (admin only)
 @auth_bp.route('/admin/users')
