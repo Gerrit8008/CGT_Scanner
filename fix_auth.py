@@ -159,27 +159,103 @@ def authenticate_user_wrapper(username_or_email, password, ip_address=None, user
     but takes care of creating and closing the database connection.
     """
     try:
-        ensure_db_tables()
-        
         # Connect to database
         conn = sqlite3.connect(CLIENT_DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # Call the actual authenticate function
-        result = authenticate_user(conn, cursor, username_or_email, password, ip_address, user_agent)
+        # Find user by username or email
+        cursor.execute('''
+        SELECT * FROM users 
+        WHERE (username = ? OR email = ?) AND active = 1
+        ''', (username_or_email, username_or_email))
         
-        # Commit changes if successful
-        if result['status'] == 'success':
-            conn.commit()
+        user = cursor.fetchone()
         
-        # Close connection
+        if not user:
+            conn.close()
+            logging.warning(f"Login failed: User not found - {username_or_email}")
+            return {"status": "error", "message": "Invalid credentials"}
+        
+        # Verify password
+        try:
+            # Use pbkdf2_hmac if salt exists (new format)
+            salt = user['salt']
+            stored_hash = user['password_hash']
+            
+            # Log password verification process (use for debugging)
+            logging.debug(f"Authenticating with salt: {salt[:5]}... for user {user['username']}")
+            
+            # Try PBKDF2 method first (more secure)
+            password_hash = hashlib.pbkdf2_hmac(
+                'sha256', 
+                password.encode(), 
+                salt.encode(), 
+                100000  # Same iterations as used for storing
+            ).hex()
+            
+            if password_hash == stored_hash:
+                password_correct = True
+                logging.debug("Password verified with PBKDF2")
+            else:
+                # Try simple SHA-256 as fallback (for older passwords)
+                password_hash_simple = hashlib.sha256((password + salt).encode()).hexdigest()
+                password_correct = (password_hash_simple == stored_hash)
+                if password_correct:
+                    logging.debug("Password verified with SHA-256 (consider upgrading)")
+                else:
+                    logging.debug("Password verification failed")
+        except Exception as pw_error:
+            # Log the exact error for debugging
+            logging.error(f"Password verification error: {str(pw_error)}")
+            password_correct = False
+        
+        if not password_correct:
+            conn.close()
+            logging.warning(f"Login failed: Invalid password for user {username_or_email}")
+            return {"status": "error", "message": "Invalid credentials"}
+        
+        # Create a session token
+        session_token = secrets.token_hex(32)
+        created_at = datetime.now().isoformat()
+        expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
+        
+        logging.debug(f"Creating session for user {user['username']} with ID {user['id']}")
+        
+        # Store session in database
+        cursor.execute('''
+        INSERT INTO sessions (
+            user_id, session_token, created_at, expires_at, ip_address, user_agent
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user['id'], session_token, created_at, expires_at, ip_address, user_agent))
+        
+        # Update last login timestamp
+        cursor.execute('''
+        UPDATE users 
+        SET last_login = ? 
+        WHERE id = ?
+        ''', (created_at, user['id']))
+        
+        conn.commit()
+        
+        # Return successful authentication result
+        result = {
+            "status": "success",
+            "user_id": user['id'],
+            "username": user['username'],
+            "email": user['email'],
+            "role": user['role'],
+            "session_token": session_token
+        }
+        
+        logging.info(f"User {user['username']} (role: {user['role']}) logged in successfully")
+        
         conn.close()
-        
         return result
         
     except Exception as e:
-        logger.error(f"Authentication wrapper error: {e}")
+        logging.error(f"Authentication error: {str(e)}")
+        logging.error(f"Authentication traceback: {traceback.format_exc()}")
         return {"status": "error", "message": f"Authentication failed: {str(e)}"}
 
 def verify_session(session_token):
