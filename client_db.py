@@ -268,6 +268,775 @@ def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=N
             }
         }
 
+@with_transaction
+def get_dashboard_summary(conn):
+    """Get summary statistics for the admin dashboard"""
+    cursor = conn.cursor()
+    
+    # Get total clients count
+    cursor.execute("SELECT COUNT(*) as total_clients FROM clients WHERE active = 1")
+    total_clients = cursor.fetchone()['total_clients']
+    
+    # Get new clients in the past 30 days
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+    cursor.execute("SELECT COUNT(*) as new_clients FROM clients WHERE created_at > ? AND active = 1", (thirty_days_ago,))
+    new_clients = cursor.fetchone()['new_clients']
+    
+    # Get active scanners count
+    cursor.execute("SELECT COUNT(*) as active_scanners FROM deployed_scanners WHERE deploy_status = 'deployed'")
+    active_scanners = cursor.fetchone()['active_scanners']
+    
+    # Get total scans in the past 24 hours
+    twenty_four_hours_ago = (datetime.now() - timedelta(hours=24)).isoformat()
+    cursor.execute("SELECT COUNT(*) as daily_scans FROM scan_history WHERE timestamp > ?", (twenty_four_hours_ago,))
+    daily_scans = cursor.fetchone()['daily_scans']
+    
+    # Get total scans count
+    cursor.execute("SELECT COUNT(*) as total_scans FROM scan_history")
+    total_scans = cursor.fetchone()['total_scans']
+    
+    # Get subscription distribution
+    cursor.execute("""
+        SELECT subscription_level, COUNT(*) as count
+        FROM clients
+        WHERE active = 1
+        GROUP BY subscription_level
+    """)
+    subscription_distribution = {row['subscription_level']: row['count'] for row in cursor.fetchall()}
+    
+    # Calculate estimated monthly revenue
+    # This is a simple calculation, you might have a more complex billing logic
+    subscription_rates = {
+        'basic': 49,
+        'pro': 149,
+        'enterprise': 499
+    }
+    
+    monthly_revenue = sum([
+        subscription_distribution.get(level, 0) * rate
+        for level, rate in subscription_rates.items()
+    ])
+    
+    return {
+        'total_clients': total_clients,
+        'new_clients_month': new_clients,
+        'active_scanners': active_scanners,
+        'daily_scans': daily_scans,
+        'total_scans': total_scans,
+        'subscription_distribution': subscription_distribution,
+        'monthly_revenue': monthly_revenue
+    }
+
+@with_transaction
+def list_clients(conn, page=1, per_page=10, filters=None, sort_by='id', sort_order='desc'):
+    """
+    List clients with pagination and filtering
+    
+    Args:
+        conn: Database connection
+        page (int): Page number (1-indexed)
+        per_page (int): Number of items per page
+        filters (dict): Optional filters like {'search': 'query', 'status': 'active', etc.}
+        sort_by (str): Column to sort by
+        sort_order (str): Sort order ('asc' or 'desc')
+    
+    Returns:
+        dict: Dictionary with clients and pagination info
+    """
+    # Validate and sanitize parameters
+    page = max(1, page)  # Ensure page is at least 1
+    per_page = min(100, max(1, per_page))  # Between 1 and 100
+    offset = (page - 1) * per_page
+    
+    # Default filters
+    if filters is None:
+        filters = {}
+    
+    # Build query
+    query = "SELECT * FROM clients"
+    count_query = "SELECT COUNT(*) as total FROM clients"
+    
+    # Apply filters
+    conditions = []
+    params = []
+    
+    if 'search' in filters and filters['search']:
+        search_term = f"%{filters['search']}%"
+        conditions.append("(business_name LIKE ? OR business_domain LIKE ? OR contact_email LIKE ?)")
+        params.extend([search_term, search_term, search_term])
+    
+    if 'subscription' in filters and filters['subscription']:
+        conditions.append("subscription_level = ?")
+        params.append(filters['subscription'])
+    
+    if 'status' in filters and filters['status']:
+        if filters['status'] == 'active':
+            conditions.append("active = 1")
+        elif filters['status'] == 'inactive':
+            conditions.append("active = 0")
+    else:
+        # By default, show only active clients
+        conditions.append("active = 1")
+    
+    if 'created_after' in filters and filters['created_after']:
+        conditions.append("created_at > ?")
+        params.append(filters['created_after'])
+    
+    # Add WHERE clause if conditions exist
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+        count_query += " WHERE " + " AND ".join(conditions)
+    
+    # Add ORDER BY clause
+    valid_sort_columns = ['id', 'business_name', 'created_at', 'subscription_level']
+    if sort_by not in valid_sort_columns:
+        sort_by = 'id'
+    
+    sort_order = 'DESC' if sort_order.lower() == 'desc' else 'ASC'
+    query += f" ORDER BY {sort_by} {sort_order}"
+    
+    # Add LIMIT and OFFSET
+    query += f" LIMIT {per_page} OFFSET {offset}"
+    
+    cursor = conn.cursor()
+    
+    # Get total count
+    cursor.execute(count_query, params)
+    total_count = cursor.fetchone()['total']
+    
+    # Get current page data
+    cursor.execute(query, params)
+    clients = [dict(row) for row in cursor.fetchall()]
+    
+    # Calculate pagination details
+    total_pages = (total_count + per_page - 1) // per_page  # Ceiling division
+    
+    return {
+        'clients': clients,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_count': total_count,
+            'total_pages': total_pages
+        }
+    }
+
+@with_transaction
+def get_client_by_id(conn, client_id):
+    """Get client details by ID"""
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT c.*, u.username as created_by_name
+        FROM clients c
+        LEFT JOIN users u ON c.created_by = u.id
+        WHERE c.id = ?
+    """, (client_id,))
+    
+    client = cursor.fetchone()
+    
+    if client:
+        # Get customizations if available
+        cursor.execute("SELECT * FROM customizations WHERE client_id = ?", (client_id,))
+        customizations = cursor.fetchone()
+        
+        client_dict = dict(client)
+        
+        if customizations:
+            client_dict.update(dict(customizations))
+        
+        return client_dict
+    else:
+        return None
+
+@with_transaction
+def update_client(conn, client_id, client_data):
+    """Update client details"""
+    cursor = conn.cursor()
+    
+    # Extract fields for the clients table
+    client_fields = [
+        'business_name', 'business_domain', 'contact_email', 'contact_phone',
+        'scanner_name', 'subscription_level', 'subscription_status',
+        'active', 'updated_at', 'updated_by'
+    ]
+    
+    # Filter client_data to keep only relevant fields
+    client_updates = {k: v for k, v in client_data.items() if k in client_fields}
+    
+    if not client_updates:
+        return {'status': 'error', 'message': 'No valid fields to update'}
+    
+    # Build the UPDATE query
+    query = "UPDATE clients SET " + ", ".join([f"{k} = ?" for k in client_updates.keys()])
+    query += " WHERE id = ?"
+    
+    values = list(client_updates.values()) + [client_id]
+    
+    cursor.execute(query, values)
+    
+    # Check if there are customization fields to update
+    customization_fields = [
+        'primary_color', 'secondary_color', 'logo_path', 'favicon_path',
+        'email_subject', 'email_intro', 'email_footer', 'default_scans',
+        'css_override', 'html_override'
+    ]
+    
+    customization_updates = {k: v for k, v in client_data.items() if k in customization_fields}
+    
+    if customization_updates:
+        # Check if a customization record exists
+        cursor.execute("SELECT id FROM customizations WHERE client_id = ?", (client_id,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing record
+            customization_query = "UPDATE customizations SET " + ", ".join([f"{k} = ?" for k in customization_updates.keys()])
+            customization_query += ", last_updated = ?"
+            
+            if 'updated_by' in client_data:
+                customization_query += ", updated_by = ?"
+                customization_values = list(customization_updates.values()) + [datetime.now().isoformat(), client_data['updated_by'], client_id]
+            else:
+                customization_values = list(customization_updates.values()) + [datetime.now().isoformat(), client_id]
+            
+            customization_query += " WHERE client_id = ?"
+            
+            cursor.execute(customization_query, customization_values)
+        else:
+            # Create new record
+            customization_updates['client_id'] = client_id
+            customization_updates['last_updated'] = datetime.now().isoformat()
+            
+            if 'updated_by' in client_data:
+                customization_updates['updated_by'] = client_data['updated_by']
+            
+            columns = ', '.join(customization_updates.keys())
+            placeholders = ', '.join(['?'] * len(customization_updates))
+            
+            cursor.execute(f"INSERT INTO customizations ({columns}) VALUES ({placeholders})", 
+                           list(customization_updates.values()))
+    
+    # Log the change
+    try:
+        cursor.execute("""
+            INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes, timestamp, ip_address)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            client_data.get('updated_by'), 
+            'update', 
+            'client', 
+            client_id, 
+            json.dumps(client_data), 
+            datetime.now().isoformat(),
+            client_data.get('ip_address', 'unknown')
+        ))
+    except Exception as log_error:
+        logging.warning(f"Could not create audit log: {log_error}")
+    
+    return {'status': 'success'}
+
+@with_transaction
+def create_client(conn, client_data, user_id):
+    """Create a new client record"""
+    cursor = conn.cursor()
+    
+    # Generate API key
+    api_key = str(uuid.uuid4())
+    
+    # Prepare client data
+    now = datetime.now().isoformat()
+    
+    # Extract/validate required fields
+    business_name = client_data.get('business_name')
+    business_domain = client_data.get('business_domain')
+    contact_email = client_data.get('contact_email')
+    
+    if not business_name or not business_domain or not contact_email:
+        return {'status': 'error', 'message': 'Missing required fields'}
+    
+    # Insert the client
+    cursor.execute("""
+        INSERT INTO clients (
+            business_name, business_domain, contact_email, contact_phone,
+            scanner_name, subscription_level, subscription_status,
+            api_key, created_at, created_by, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    """, (
+        business_name,
+        business_domain,
+        contact_email,
+        client_data.get('contact_phone', ''),
+        client_data.get('scanner_name', ''),
+        client_data.get('subscription', 'basic'),
+        'active',
+        api_key,
+        now,
+        user_id
+    ))
+    
+    # Get the new client ID
+    client_id = cursor.lastrowid
+    
+    # Insert customization data if provided
+    customization_data = {
+        'client_id': client_id,
+        'primary_color': client_data.get('primary_color', '#FF6900'),
+        'secondary_color': client_data.get('secondary_color', '#808588'),
+        'last_updated': now,
+        'updated_by': user_id
+    }
+    
+    # Add optional customization fields if provided
+    for field in ['logo_path', 'favicon_path', 'email_subject', 'email_intro', 'email_footer']:
+        if field in client_data and client_data[field]:
+            customization_data[field] = client_data[field]
+    
+    # Store default_scans as JSON string if provided
+    if 'default_scans' in client_data and client_data['default_scans']:
+        if isinstance(client_data['default_scans'], list):
+            customization_data['default_scans'] = json.dumps(client_data['default_scans'])
+        else:
+            customization_data['default_scans'] = client_data['default_scans']
+    
+    # Insert customizations
+    columns = ', '.join(customization_data.keys())
+    placeholders = ', '.join(['?'] * len(customization_data))
+    cursor.execute(f"INSERT INTO customizations ({columns}) VALUES ({placeholders})",
+                  list(customization_data.values()))
+    
+    # Generate subdomain for scanner
+    subdomain = business_name.lower().replace(' ', '-')
+    subdomain = ''.join(c for c in subdomain if c.isalnum() or c == '-')
+    
+    # Check if subdomain exists, add random suffix if needed
+    cursor.execute("SELECT id FROM deployed_scanners WHERE subdomain = ?", (subdomain,))
+    if cursor.fetchone():
+        import random
+        subdomain = f"{subdomain}-{random.randint(100, 999)}"
+    
+    # Create a deployed scanner record
+    cursor.execute("""
+        INSERT INTO deployed_scanners (
+            client_id, subdomain, deploy_status, deploy_date, 
+            last_updated, template_version
+        ) VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        client_id,
+        subdomain,
+        'pending',  # New scanners start as pending
+        now,
+        now,
+        '1.0'
+    ))
+    
+    scanner_id = cursor.lastrowid
+    
+    return {
+        'status': 'success', 
+        'client_id': client_id,
+        'scanner_id': scanner_id,
+        'api_key': api_key
+    }
+
+@with_transaction
+def list_users(conn, page=1, per_page=10, filters=None):
+    """
+    List users with pagination and filtering
+    
+    Args:
+        conn: Database connection
+        page (int): Page number (1-indexed)
+        per_page (int): Number of items per page
+        filters (dict): Optional filters like {'role': 'admin', 'search': 'query', etc.}
+    
+    Returns:
+        dict: Dictionary with users and pagination info
+    """
+    # Validate and sanitize parameters
+    page = max(1, page)  # Ensure page is at least 1
+    per_page = min(100, max(1, per_page))  # Between 1 and 100
+    offset = (page - 1) * per_page
+    
+    # Default filters
+    if filters is None:
+        filters = {}
+    
+    # Build query
+    query = """
+        SELECT u.*, 
+            (SELECT COUNT(*) FROM sessions WHERE user_id = u.id) as login_count
+        FROM users u
+    """
+    count_query = "SELECT COUNT(*) as total FROM users"
+    
+    # Apply filters
+    conditions = []
+    params = []
+    
+    if 'search' in filters and filters['search']:
+        search_term = f"%{filters['search']}%"
+        conditions.append("(username LIKE ? OR email LIKE ? OR full_name LIKE ?)")
+        params.extend([search_term, search_term, search_term])
+    
+    if 'role' in filters and filters['role']:
+        conditions.append("role = ?")
+        params.append(filters['role'])
+    
+    if 'active' in filters:
+        conditions.append("active = ?")
+        params.append(1 if filters['active'] else 0)
+    
+    # Add WHERE clause if conditions exist
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+        count_query += " WHERE " + " AND ".join(conditions)
+    
+    # Add ORDER BY clause
+    query += " ORDER BY id DESC"
+    
+    # Add LIMIT and OFFSET
+    query += f" LIMIT {per_page} OFFSET {offset}"
+    
+    cursor = conn.cursor()
+    
+    # Get total count
+    cursor.execute(count_query, params)
+    total_count = cursor.fetchone()['total']
+    
+    # Get current page data
+    cursor.execute(query, params)
+    users = [dict(row) for row in cursor.fetchall()]
+    
+    # Calculate pagination details
+    total_pages = (total_count + per_page - 1) // per_page  # Ceiling division
+    
+    return {
+        'users': users,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_count': total_count,
+            'total_pages': total_pages
+        }
+    }
+
+@with_transaction
+def create_user(conn, username, email, password, role='client', full_name=''):
+    """Create a new user"""
+    cursor = conn.cursor()
+    
+    # Check if username or email already exists
+    cursor.execute("SELECT id FROM users WHERE username = ? OR email = ?", (username, email))
+    if cursor.fetchone():
+        return {'status': 'error', 'message': 'Username or email already exists'}
+    
+    # Generate password hash
+    salt = secrets.token_hex(16)
+    password_hash = hashlib.pbkdf2_hmac(
+        'sha256', 
+        password.encode(), 
+        salt.encode(), 
+        100000
+    ).hex()
+    
+    # Insert the user
+    cursor.execute("""
+        INSERT INTO users (
+            username, email, password_hash, salt, role, full_name, created_at, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+    """, (
+        username,
+        email,
+        password_hash,
+        salt,
+        role,
+        full_name,
+        datetime.now().isoformat()
+    ))
+    
+    user_id = cursor.lastrowid
+    
+    return {'status': 'success', 'user_id': user_id}
+
+@with_transaction
+def get_user_by_id(conn, user_id):
+    """Get user details by ID"""
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT *, 
+            (SELECT COUNT(*) FROM sessions WHERE user_id = users.id) as login_count,
+            (SELECT MAX(created_at) FROM sessions WHERE user_id = users.id) as last_login
+        FROM users 
+        WHERE id = ?
+    """, (user_id,))
+    
+    user = cursor.fetchone()
+    
+    if user:
+        # Convert to dict but exclude sensitive fields
+        user_dict = dict(user)
+        if 'password_hash' in user_dict:
+            del user_dict['password_hash']
+        if 'salt' in user_dict:
+            del user_dict['salt']
+            
+        return user_dict
+    else:
+        return None
+
+@with_transaction
+def update_user(conn, user_id, user_data):
+    """Update user details"""
+    cursor = conn.cursor()
+    
+    # Check if username or email is being changed and if it conflicts
+    if 'username' in user_data or 'email' in user_data:
+        # Use a direct function call with the database connection
+        current_data = get_user_by_id(conn, user_id)
+        if not current_data:
+            return {'status': 'error', 'message': 'User not found'}
+            
+        if 'username' in user_data and user_data['username'] != current_data['username']:
+            cursor.execute("SELECT id FROM users WHERE username = ? AND id != ?", 
+                          (user_data['username'], user_id))
+            if cursor.fetchone():
+                return {'status': 'error', 'message': 'Username already taken'}
+                
+        if 'email' in user_data and user_data['email'] != current_data['email']:
+            cursor.execute("SELECT id FROM users WHERE email = ? AND id != ?", 
+                          (user_data['email'], user_id))
+            if cursor.fetchone():
+                return {'status': 'error', 'message': 'Email already in use'}
+    
+    # Handle password update separately
+    if 'password' in user_data and user_data['password']:
+        salt = secrets.token_hex(16)
+        password_hash = hashlib.pbkdf2_hmac(
+            'sha256', 
+            user_data['password'].encode(), 
+            salt.encode(), 
+            100000
+        ).hex()
+        
+        cursor.execute("""
+            UPDATE users SET password_hash = ?, salt = ? WHERE id = ?
+        """, (password_hash, salt, user_id))
+        
+        # Remove password from user_data after handling
+        del user_data['password']
+    
+    # Update other fields
+    update_fields = [k for k in user_data.keys() if k not in ['password']]
+    
+    if update_fields:
+        query = "UPDATE users SET " + ", ".join([f"{field} = ?" for field in update_fields])
+        query += " WHERE id = ?"
+        
+        values = [user_data[field] for field in update_fields] + [user_id]
+        
+        cursor.execute(query, values)
+    
+    return {'status': 'success'}
+
+@with_transaction
+def deactivate_user(conn, user_id):
+    """Deactivate a user account"""
+    cursor = conn.cursor()
+    
+    # Set user as inactive
+    cursor.execute("UPDATE users SET active = 0 WHERE id = ?", (user_id,))
+    
+    # Terminate all active sessions
+    cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    
+    return {'status': 'success'}
+
+@with_transaction
+def list_deployed_scanners(conn, page=1, per_page=10, filters=None):
+    """
+    List deployed scanners with pagination and filtering
+    
+    Args:
+        conn: Database connection
+        page (int): Page number (1-indexed)
+        per_page (int): Number of items per page
+        filters (dict): Optional filters like {'status': 'deployed', 'search': 'query', etc.}
+    
+    Returns:
+        dict: Dictionary with scanners and pagination info
+    """
+    # Validate and sanitize parameters
+    page = max(1, page)  # Ensure page is at least 1
+    per_page = min(100, max(1, per_page))  # Between 1 and 100
+    offset = (page - 1) * per_page
+    
+    # Default filters
+    if filters is None:
+        filters = {}
+    
+    # Build query
+    query = """
+        SELECT ds.*, c.business_name, c.business_domain, c.scanner_name,
+            (SELECT COUNT(*) FROM scan_history WHERE client_id = ds.client_id) as scan_count,
+            (SELECT MAX(timestamp) FROM scan_history WHERE client_id = ds.client_id) as last_scan
+        FROM deployed_scanners ds
+        JOIN clients c ON ds.client_id = c.id
+    """
+    count_query = """
+        SELECT COUNT(*) as total 
+        FROM deployed_scanners ds
+        JOIN clients c ON ds.client_id = c.id
+    """
+    
+    # Apply filters
+    conditions = []
+    params = []
+    
+    if 'search' in filters and filters['search']:
+        search_term = f"%{filters['search']}%"
+        conditions.append("(c.business_name LIKE ? OR c.business_domain LIKE ? OR ds.subdomain LIKE ?)")
+        params.extend([search_term, search_term, search_term])
+    
+    if 'status' in filters and filters['status']:
+        conditions.append("ds.deploy_status = ?")
+        params.append(filters['status'])
+    
+    if 'client_id' in filters and filters['client_id']:
+        conditions.append("ds.client_id = ?")
+        params.append(filters['client_id'])
+    
+    # Add WHERE clause if conditions exist
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+        count_query += " WHERE " + " AND ".join(conditions)
+    
+    # Add ORDER BY clause
+    query += " ORDER BY ds.id DESC"
+    
+    # Add LIMIT and OFFSET
+    query += f" LIMIT {per_page} OFFSET {offset}"
+    
+    cursor = conn.cursor()
+    
+    # Get total count
+    cursor.execute(count_query, params)
+    total_count = cursor.fetchone()['total']
+    
+    # Get current page data
+    cursor.execute(query, params)
+    scanners = [dict(row) for row in cursor.fetchall()]
+    
+    # Calculate pagination details
+    total_pages = (total_count + per_page - 1) // per_page  # Ceiling division
+    
+    return {
+        'scanners': scanners,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_count': total_count,
+            'total_pages': total_pages
+        }
+    }
+
+@with_transaction
+def get_scanner_by_id(conn, scanner_id):
+    """Get scanner details by ID"""
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT ds.*, c.business_name, c.business_domain, c.scanner_name, c.subscription_level,
+            (SELECT COUNT(*) FROM scan_history WHERE client_id = ds.client_id) as scan_count,
+            (SELECT MAX(timestamp) FROM scan_history WHERE client_id = ds.client_id) as last_scan
+        FROM deployed_scanners ds
+        JOIN clients c ON ds.client_id = c.id
+        WHERE ds.id = ?
+    """, (scanner_id,))
+    
+    scanner = cursor.fetchone()
+    
+    if scanner:
+        # Get customizations
+        cursor.execute("""
+            SELECT * FROM customizations
+            WHERE client_id = ?
+        """, (scanner['client_id'],))
+        
+        customizations = cursor.fetchone()
+        
+        scanner_dict = dict(scanner)
+        
+        if customizations:
+            # Add customization data to scanner dict
+            for key, value in dict(customizations).items():
+                if key not in scanner_dict and key != 'id' and key != 'client_id':
+                    scanner_dict[key] = value
+        
+        return scanner_dict
+    else:
+        return None
+
+@with_transaction
+def update_scanner(conn, scanner_id, scanner_data):
+    """Update scanner configuration"""
+    cursor = conn.cursor()
+    
+    # Check if scanner exists
+    cursor.execute("SELECT id, client_id FROM deployed_scanners WHERE id = ?", (scanner_id,))
+    scanner = cursor.fetchone()
+    
+    if not scanner:
+        return {'status': 'error', 'message': 'Scanner not found'}
+    
+    # If updating subdomain, check if it's unique
+    if 'subdomain' in scanner_data:
+        cursor.execute("""
+            SELECT id FROM deployed_scanners 
+            WHERE subdomain = ? AND id != ?
+        """, (scanner_data['subdomain'], scanner_id))
+        
+        if cursor.fetchone():
+            return {'status': 'error', 'message': 'Subdomain already in use'}
+    
+    # Update scanner fields
+    update_fields = scanner_data.keys()
+    
+    if update_fields:
+        query = "UPDATE deployed_scanners SET " + ", ".join([f"{field} = ?" for field in update_fields])
+        query += " WHERE id = ?"
+        
+        values = [scanner_data[field] for field in update_fields] + [scanner_id]
+        
+        cursor.execute(query, values)
+    
+    return {'status': 'success'}
+
+@with_transaction
+def regenerate_scanner_api_key(conn, scanner_id):
+    """Regenerate API key for a scanner"""
+    cursor = conn.cursor()
+    
+    # Get client ID for scanner
+    cursor.execute("SELECT client_id FROM deployed_scanners WHERE id = ?", (scanner_id,))
+    result = cursor.fetchone()
+    
+    if not result:
+        return {'status': 'error', 'message': 'Scanner not found'}
+    
+    client_id = result[0]
+    
+    # Generate new API key
+    new_api_key = str(uuid.uuid4())
+    
+    # Update client record with new API key
+    cursor.execute("""
+        UPDATE clients SET api_key = ? WHERE id = ?
+    """, (new_api_key, client_id))
+    
+    return {'status': 'success', 'api_key': new_api_key}
+
 def get_scan_history_by_client_id(client_id, limit=None):
     """Get scan history for a client"""
     try:
@@ -329,7 +1098,530 @@ def get_scan_history_by_client_id(client_id, limit=None):
     except Exception as e:
         logging.error(f"Error retrieving scan history for client: {e}")
         return []
-     
+
+@with_transaction
+def toggle_scanner_status(conn, scanner_id):
+    """Toggle scanner between deployed and inactive states"""
+    cursor = conn.cursor()
+    
+    # Get current status
+    cursor.execute("SELECT deploy_status FROM deployed_scanners WHERE id = ?", (scanner_id,))
+    result = cursor.fetchone()
+    
+    if not result:
+        return {'status': 'error', 'message': 'Scanner not found'}
+    
+    current_status = result[0]
+    
+    # Toggle status
+    new_status = 'deployed' if current_status != 'deployed' else 'inactive'
+    
+    # Update status
+    cursor.execute("""
+        UPDATE deployed_scanners SET 
+            deploy_status = ?,
+            last_updated = ?
+        WHERE id = ?
+    """, (
+        new_status,
+        datetime.now().isoformat(),
+        scanner_id
+    ))
+    
+    return {'status': 'success', 'current_status': new_status}
+
+@with_transaction
+def get_scanner_stats(conn, scanner_id):
+    """Get statistics for a scanner"""
+    cursor = conn.cursor()
+    
+    # Get scanner info
+    cursor.execute("SELECT client_id, deploy_date FROM deployed_scanners WHERE id = ?", (scanner_id,))
+    scanner = cursor.fetchone()
+    
+    if not scanner:
+        return {'status': 'error', 'message': 'Scanner not found'}
+    
+    client_id = scanner['client_id']
+    
+    # Get total scan count
+    cursor.execute("SELECT COUNT(*) as total FROM scan_history WHERE client_id = ?", (client_id,))
+    total_scans = cursor.fetchone()['total']
+    
+    # Get scans in last 24 hours
+    twenty_four_hours_ago = (datetime.now() - timedelta(hours=24)).isoformat()
+    cursor.execute("SELECT COUNT(*) as total FROM scan_history WHERE client_id = ? AND timestamp > ?", 
+                  (client_id, twenty_four_hours_ago))
+    scans_today = cursor.fetchone()['total']
+    
+    # Get scans in last 7 days
+    seven_days_ago = (datetime.now() - timedelta(days=7)).isoformat()
+    cursor.execute("SELECT COUNT(*) as total FROM scan_history WHERE client_id = ? AND timestamp > ?", 
+                  (client_id, seven_days_ago))
+    scans_week = cursor.fetchone()['total']
+    
+    # Get scans in last 30 days
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+    cursor.execute("SELECT COUNT(*) as total FROM scan_history WHERE client_id = ? AND timestamp > ?", 
+                  (client_id, thirty_days_ago))
+    scans_month = cursor.fetchone()['total']
+    
+    # Get monthly scan trends (past 6 months)
+    monthly_trend = []
+    for i in range(5, -1, -1):
+        month_start = (datetime.now() - timedelta(days=i*30+30)).isoformat()[0:7] + '-01'
+        next_month_start = (datetime.now() - timedelta(days=(i-1)*30+30)).isoformat()[0:7] + '-01'
+        if i == 0:
+            next_month_start = (datetime.now() + timedelta(days=30)).isoformat()[0:7] + '-01'
+        
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM scan_history 
+            WHERE client_id = ? AND timestamp >= ? AND timestamp < ?
+        """, (client_id, month_start, next_month_start))
+        
+        month_name = datetime.fromisoformat(month_start).strftime('%b')
+        count = cursor.fetchone()['count']
+        monthly_trend.append({'month': month_name, 'count': count})
+    
+    # Get last scan details
+    cursor.execute("""
+        SELECT * FROM scan_history 
+        WHERE client_id = ? 
+        ORDER BY timestamp DESC 
+        LIMIT 1
+    """, (client_id,))
+    last_scan = cursor.fetchone()
+    last_scan_details = dict(last_scan) if last_scan else None
+    
+    return {
+        'total_scans': total_scans,
+        'scans_today': scans_today,
+        'scans_week': scans_week,
+        'scans_month': scans_month,
+        'monthly_trend': monthly_trend,
+        'last_scan': last_scan_details,
+        'status': 'success'
+    }
+
+@with_transaction
+def get_scan_history(conn, scanner_id, page=1, per_page=10):
+    """Get scan history for a scanner"""
+    cursor = conn.cursor()
+    
+    # Get client ID for scanner
+    cursor.execute("SELECT client_id FROM deployed_scanners WHERE id = ?", (scanner_id,))
+    result = cursor.fetchone()
+    
+    if not result:
+        return {'status': 'error', 'message': 'Scanner not found'}
+    
+    client_id = result[0]
+    
+    # Paginate scan history
+    offset = (page - 1) * per_page
+    
+    cursor.execute("""
+        SELECT * FROM scan_history 
+        WHERE client_id = ? 
+        ORDER BY timestamp DESC
+        LIMIT ? OFFSET ?
+    """, (client_id, per_page, offset))
+    
+    scans = [dict(row) for row in cursor.fetchall()]
+    
+    # Get total count
+    cursor.execute("SELECT COUNT(*) as total FROM scan_history WHERE client_id = ?", (client_id,))
+    total_count = cursor.fetchone()['total']
+    
+    # Calculate total pages
+    total_pages = (total_count + per_page - 1) // per_page
+    
+    return {
+        'scans': scans,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_count': total_count,
+            'total_pages': total_pages
+        },
+        'status': 'success'
+    }
+
+@with_transaction
+def list_subscriptions(conn, page=1, per_page=10, filters=None):
+    """
+    List subscription details with pagination and filtering
+    
+    Args:
+        conn: Database connection
+        page (int): Page number (1-indexed)
+        per_page (int): Number of items per page
+        filters (dict): Optional filters
+    
+    Returns:
+        dict: Dictionary with subscriptions and pagination info
+    """
+    # Validate and sanitize parameters
+    page = max(1, page)  # Ensure page is at least 1
+    per_page = min(100, max(1, per_page))  # Between 1 and 100
+    offset = (page - 1) * per_page
+    
+    # Default filters
+    if filters is None:
+        filters = {}
+    
+    # Build query to get subscription information from clients table
+    query = """
+        SELECT c.id, c.business_name, c.business_domain, c.contact_email,
+            c.subscription_level, c.subscription_status, c.subscription_start, c.subscription_end,
+            c.created_at, cb.billing_cycle, cb.amount, cb.next_billing_date
+        FROM clients c
+        LEFT JOIN client_billing cb ON c.id = cb.client_id
+        WHERE c.active = 1
+    """
+    count_query = "SELECT COUNT(*) as total FROM clients WHERE active = 1"
+    
+    # Apply filters
+    conditions = []
+    params = []
+    
+    if 'search' in filters and filters['search']:
+        search_term = f"%{filters['search']}%"
+        # Add WHERE clause to the main query
+        query += " AND (c.business_name LIKE ? OR c.business_domain LIKE ? OR c.contact_email LIKE ?)"
+        params.extend([search_term, search_term, search_term])
+        # Add WHERE clause to the count query
+        count_query += " AND (business_name LIKE ? OR business_domain LIKE ? OR contact_email LIKE ?)"
+        params.extend([search_term, search_term, search_term])
+    
+    if 'level' in filters and filters['level']:
+        # Add to main query
+        query += " AND c.subscription_level = ?"
+        params.append(filters['level'])
+        # Add to count query
+        count_query += " AND subscription_level = ?"
+        params.append(filters['level'])
+    
+    if 'status' in filters and filters['status']:
+        # Add to main query
+        query += " AND c.subscription_status = ?"
+        params.append(filters['status'])
+        # Add to count query
+        count_query += " AND subscription_status = ?"
+        params.append(filters['status'])
+    
+    # Add ORDER BY clause
+    query += " ORDER BY c.id DESC"
+    
+    # Add LIMIT and OFFSET
+    query += f" LIMIT {per_page} OFFSET {offset}"
+    
+    cursor = conn.cursor()
+    
+    # Get total count
+    cursor.execute(count_query, params[:len(params)//2] if 'search' in filters else params)
+    total_count = cursor.fetchone()['total']
+    
+    # Get current page data
+    cursor.execute(query, params)
+    subscriptions = [dict(row) for row in cursor.fetchall()]
+    
+    # Get recent transactions for each subscription
+    for sub in subscriptions:
+        cursor.execute("""
+            SELECT * FROM billing_transactions
+            WHERE client_id = ?
+            ORDER BY timestamp DESC
+            LIMIT 3
+        """, (sub['id'],))
+        sub['recent_transactions'] = [dict(row) for row in cursor.fetchall()]
+        
+        # Calculate subscription metrics
+        # For example, days until next billing
+        if sub.get('next_billing_date'):
+            try:
+                next_date = datetime.fromisoformat(sub['next_billing_date'])
+                today = datetime.now()
+                days_remaining = (next_date - today).days
+                sub['days_until_billing'] = max(0, days_remaining)
+            except (ValueError, TypeError):
+                sub['days_until_billing'] = None
+    
+    # Calculate pagination details
+    total_pages = (total_count + per_page - 1) // per_page  # Ceiling division
+    
+    return {
+        'subscriptions': subscriptions,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_count': total_count,
+            'total_pages': total_pages
+        }
+    }
+
+@with_transaction
+def get_client_stats(conn, client_id):
+    """Get detailed statistics for a client"""
+    cursor = conn.cursor()
+    
+    # Get scanner count
+    cursor.execute("""
+        SELECT COUNT(*) as scanner_count
+        FROM deployed_scanners
+        WHERE client_id = ?
+    """, (client_id,))
+    scanner_count = cursor.fetchone()['scanner_count']
+    
+    # Get total scan count
+    cursor.execute("""
+        SELECT COUNT(*) as scan_count
+        FROM scan_history
+        WHERE client_id = ?
+    """, (client_id,))
+    scan_count = cursor.fetchone()['scan_count']
+    
+    # Get scan count for different periods
+    today = datetime.now().date().isoformat()
+    cursor.execute("""
+        SELECT COUNT(*) as today_count
+        FROM scan_history
+        WHERE client_id = ? AND date(timestamp) = ?
+    """, (client_id, today))
+    scans_today = cursor.fetchone()['today_count']
+    
+    # Last 7 days
+    seven_days_ago = (datetime.now() - timedelta(days=7)).isoformat()
+    cursor.execute("""
+        SELECT COUNT(*) as week_count
+        FROM scan_history
+        WHERE client_id = ? AND timestamp > ?
+    """, (client_id, seven_days_ago))
+    scans_week = cursor.fetchone()['week_count']
+    
+    # Last 30 days
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+    cursor.execute("""
+        SELECT COUNT(*) as month_count
+        FROM scan_history
+        WHERE client_id = ? AND timestamp > ?
+    """, (client_id, thirty_days_ago))
+    scans_month = cursor.fetchone()['month_count']
+    
+    # Get daily scan activity for last 30 days
+    cursor.execute("""
+        SELECT date(timestamp) as scan_date, COUNT(*) as count
+        FROM scan_history
+        WHERE client_id = ? AND timestamp > ?
+        GROUP BY date(timestamp)
+        ORDER BY scan_date
+    """, (client_id, thirty_days_ago))
+    daily_activity = [dict(row) for row in cursor.fetchall()]
+    
+    # Get most recent scans
+    cursor.execute("""
+        SELECT *
+        FROM scan_history
+        WHERE client_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 10
+    """, (client_id,))
+    recent_scans = [dict(row) for row in cursor.fetchall()]
+    
+    # Get subscription information
+    cursor.execute("""
+        SELECT subscription_level, subscription_status, subscription_start, subscription_end
+        FROM clients
+        WHERE id = ?
+    """, (client_id,))
+    subscription = dict(cursor.fetchone())
+    
+    # Get billing information
+    cursor.execute("""
+        SELECT *
+        FROM client_billing
+        WHERE client_id = ?
+    """, (client_id,))
+    billing = cursor.fetchone()
+    billing_info = dict(billing) if billing else {}
+    
+    # Get recent transactions
+    cursor.execute("""
+        SELECT *
+        FROM billing_transactions
+        WHERE client_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 5
+    """, (client_id,))
+    recent_transactions = [dict(row) for row in cursor.fetchall()]
+    
+    return {
+        'scanner_count': scanner_count,
+        'scan_count': scan_count,
+        'scans_today': scans_today,
+        'scans_week': scans_week,
+        'scans_month': scans_month,
+        'daily_activity': daily_activity,
+        'recent_scans': recent_scans,
+        'subscription': subscription,
+        'billing': billing_info,
+        'recent_transactions': recent_transactions
+    }
+
+@with_transaction
+def log_scan(conn, client_id, scan_id, target):
+    """Log a scan in the scan history table"""
+    cursor = conn.cursor()
+    
+    # Insert scan record
+    cursor.execute("""
+        INSERT INTO scan_history (
+            client_id, scan_id, timestamp, target, scan_type, status
+        ) VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        client_id,
+        scan_id,
+        datetime.now().isoformat(),
+        target,
+        'security_scan',  # Default scan type
+        'completed'  # Assuming scan completed successfully
+    ))
+    
+    return {'status': 'success'}
+
+@with_transaction
+def check_username_availability(conn, username):
+    """Check if a username is available"""
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+    result = cursor.fetchone()
+    
+    return {'available': result is None}
+
+@with_transaction
+def check_email_availability(conn, email):
+    """Check if an email is available"""
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+    result = cursor.fetchone()
+    
+    return {'available': result is None}
+
+@with_transaction
+def verify_session(conn, session_token):
+    """Verify a session token and return user info"""
+    if not session_token:
+        return {'status': 'error', 'message': 'No session token provided'}
+    
+    cursor = conn.cursor()
+    
+    # Get session with user info
+    cursor.execute("""
+        SELECT s.*, u.username, u.email, u.role, u.full_name, u.id as user_id
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.session_token = ? AND s.expires_at > ?
+          AND u.active = 1
+    """, (session_token, datetime.now().isoformat()))
+    
+    session = cursor.fetchone()
+    
+    if not session:
+        return {'status': 'error', 'message': 'Invalid or expired session'}
+    
+    # Convert to dict but exclude sensitive fields
+    user_data = {
+        'id': session['user_id'],
+        'username': session['username'],
+        'email': session['email'],
+        'role': session['role'],
+        'full_name': session['full_name']
+    }
+    
+    return {'status': 'success', 'user': user_data}
+
+@with_transaction
+def get_login_stats(conn):
+    """Get login statistics for admin dashboard"""
+    cursor = conn.cursor()
+    
+    # Get active users count
+    cursor.execute("SELECT COUNT(*) as count FROM users WHERE active = 1")
+    active_users = cursor.fetchone()['count']
+    
+    # Get logins today
+    today = datetime.now().date().isoformat()
+    cursor.execute("""
+        SELECT COUNT(*) as count FROM sessions
+        WHERE date(created_at) = ?
+    """, (today,))
+    logins_today = cursor.fetchone()['count']
+    
+    # Get logins this week
+    week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+    cursor.execute("""
+        SELECT COUNT(*) as count FROM sessions
+        WHERE created_at > ?
+    """, (week_ago,))
+    logins_week = cursor.fetchone()['count']
+    
+    # Get logins this month
+    month_ago = (datetime.now() - timedelta(days=30)).isoformat()
+    cursor.execute("""
+        SELECT COUNT(*) as count FROM sessions
+        WHERE created_at > ?
+    """, (month_ago,))
+    logins_month = cursor.fetchone()['count']
+    
+    # Get new users this week
+    cursor.execute("""
+        SELECT COUNT(*) as count FROM users
+        WHERE created_at > ? AND active = 1
+    """, (week_ago,))
+    new_users_week = cursor.fetchone()['count']
+    
+    # Get new users this month
+    cursor.execute("""
+        SELECT COUNT(*) as count FROM users
+        WHERE created_at > ? AND active = 1
+    """, (month_ago,))
+    new_users_month = cursor.fetchone()['count']
+    
+    # Get user roles distribution
+    cursor.execute("""
+        SELECT role, COUNT(*) as count FROM users
+        WHERE active = 1
+        GROUP BY role
+    """)
+    roles = cursor.fetchall()
+    user_roles = {row['role']: row['count'] for row in roles}
+    
+    # Get recent logins
+    cursor.execute("""
+        SELECT s.created_at, s.ip_address, u.id, u.username, u.email, u.role
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        ORDER BY s.created_at DESC
+        LIMIT 10
+    """)
+    recent_logins = [dict(row) for row in cursor.fetchall()]
+    
+    return {
+        'status': 'success',
+        'data': {
+            'active_users': active_users,
+            'logins_today': logins_today,
+            'logins_week': logins_week,
+            'logins_month': logins_month,
+            'new_users_week': new_users_week,
+            'new_users_month': new_users_month,
+            'user_roles': user_roles,
+            'recent_logins': recent_logins
+        }
+    }
+
 def with_transaction(func):
     """Decorator for database transactions with proper error handling"""
     @wraps(func)
