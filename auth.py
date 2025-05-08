@@ -1,14 +1,20 @@
+@function_calls
+@invoke name="artifacts"
+@parameter name="command" create
+@parameter name="id" auth_fix
+@parameter name="type" application/vnd.ant.code
+@parameter name="language" python
+@parameter name="title" Fixed auth.py
+@parameter name="content"
 # auth.py
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 import os
 import logging
 from datetime import datetime
 
-# Import authentication utilities
-from auth_utils import (
-    authenticate_user, verify_session, logout_user, 
-    create_user, register_client
-)
+# Import the fixed authenticate_user function
+from fix_auth import authenticate_user_wrapper as authenticate_user
+from fix_auth import verify_session, logout_user, create_user
 
 # Create authentication blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -20,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Login route
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """User login page"""
+    """User login page with proper parameter handling"""
     # Check if already logged in
     session_token = session.get('session_token')
     if session_token:
@@ -47,7 +53,7 @@ def login():
         ip_address = request.remote_addr
         user_agent = request.headers.get('User-Agent')
         
-        # Authenticate user
+        # Use the fixed authenticate_user function with all parameters
         result = authenticate_user(username, password, ip_address, user_agent)
         
         if result['status'] == 'success':
@@ -120,6 +126,7 @@ def register():
             
             # Register client
             if business_data['business_name'] and business_data['business_domain']:
+                from client_db import register_client
                 client_result = register_client(user_result['user_id'], business_data)
                 
                 if client_result['status'] == 'success':
@@ -165,6 +172,7 @@ def complete_profile():
         }
         
         # Register client
+        from client_db import register_client
         client_result = register_client(user['user_id'], business_data)
         
         if client_result['status'] == 'success':
@@ -175,3 +183,5 @@ def complete_profile():
     
     # GET request - show profile completion form
     return render_template('auth/complete_profile.html', user=user)
+@invoke
+@function_calls
