@@ -181,6 +181,11 @@ CREATE INDEX IF NOT EXISTS idx_clients_api_key ON clients(api_key);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token);
 """
 
+SCHEMA_SQL = """
+-- Your schema creation SQL here
+-- This can be empty if you're creating tables explicitly in init_client_db
+"""
+
 def register_client(user_id, business_data):
     """
     Register a client for a user
