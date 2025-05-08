@@ -1,12 +1,3 @@
-```python
-@function_calls
-@invoke name="artifacts"
-@parameter name="command" create
-@parameter name="id" auth_hotfix
-@parameter name="type" application/vnd.ant.code
-@parameter name="language" python
-@parameter name="title" auth_hotfix.py
-@parameter name="content"
 # auth_hotfix.py - Register the authentication fix with Flask app
 import logging
 
@@ -32,5 +23,3 @@ def register_auth_hotfix(app):
     
     app.logger.info("Authentication hotfix registered")
     return app
-@invoke
-@function_calls
