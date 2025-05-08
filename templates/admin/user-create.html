@@ -98,7 +98,7 @@
                     <a href="/admin/clients" class="sidebar-link">
                         <i class="bi bi-people"></i> Client Management
                     </a>
-                    <a href="{{ url_for('auth.admin_users') }}" class="sidebar-link active">
+                    <a href="{{ url_for('admin.user_list') }}" class="sidebar-link active">
                         <i class="bi bi-person-badge"></i> User Management
                     </a>
                     <a href="/customize" class="sidebar-link">
@@ -194,7 +194,7 @@
                             </div>
                             
                             <div class="text-end">
-                                <a href="{{ url_for('auth.admin_users') }}" class="btn btn-secondary me-2">Cancel</a>
+                                <a href="{{ url_for('admin.user_list') }}" class="btn btn-secondary me-2">Cancel</a>
                                 <button type="submit" class="btn btn-primary">Create User</button>
                             </div>
                         </form>
