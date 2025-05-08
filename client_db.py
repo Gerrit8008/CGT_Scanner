@@ -728,7 +728,7 @@ def init_db():
         logging.debug(traceback.format_exc())
         return False
 
-def init_client_db():
+def init_client_db(conn, cursor):
     """Initialize the client database with proper schema and error handling"""
     try:
         # Create directory if it doesn't exist
