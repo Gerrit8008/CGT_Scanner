@@ -728,15 +728,15 @@ def init_db():
         logging.debug(traceback.format_exc())
         return False
 
+# This version is designed to work with the @with_transaction decorator
+
+@with_transaction
 def init_client_db(conn, cursor):
-    """Initialize the client database with proper schema and error handling"""
+    """Initialize the database with required tables and indexes"""
     try:
-        # Create directory if it doesn't exist
-        db_dir = os.path.dirname(CLIENT_DB_PATH)
-        os.makedirs(db_dir, exist_ok=True)
-        
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        cursor = conn.cursor()
+        # Execute the schema SQL to create tables and indices
+        cursor.executescript(SCHEMA_SQL)
+        logging.info("Database schema initialized successfully.")
         
         # Create users table if not exists
         cursor.execute('''
@@ -869,15 +869,32 @@ def init_client_db(conn, cursor):
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_clients_api_key ON clients(api_key)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token)')
         
-        conn.commit()
-        conn.close()
+        # Create admin user if it doesn't exist
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        admin = cursor.fetchone()
         
-        logger.info("Client database initialized successfully")
+        if not admin:
+            # Create salt and hash password with better security
+            salt = secrets.token_hex(16)
+            password = 'admin123'  # Default password (should be changed immediately)
+            password_hash = hashlib.pbkdf2_hmac(
+                'sha256', 
+                password.encode(), 
+                salt.encode(), 
+                100000
+            ).hex()
+            
+            cursor.execute('''
+            INSERT INTO users (username, email, password_hash, salt, role, full_name, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', ('admin', 'admin@scannerplatform.com', password_hash, salt, 'admin', 'System Administrator', datetime.now().isoformat()))
+            
+            logging.info("Admin user created. Please change the default password.")
+            
         return {"status": "success", "message": "Database initialized successfully"}
-    
-    except Exception as e:
-        logger.error(f"Error initializing client database: {e}")
-        return {"status": "error", "message": f"Failed to initialize database: {str(e)}"}
+    except sqlite3.DatabaseError as e:
+        logging.error(f"Database error during initialization: {e}")
+        raise
         
 def ensure_full_name_column():
     """Ensure the full_name column exists in the users table"""
