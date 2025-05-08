@@ -9,7 +9,7 @@ import uuid
 import hashlib
 import secrets
 from datetime import datetime, timedelta
-from functools import wraps
+import functools
 
 
 # Configure logging
