@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-# auth_fix.py - Fix for the authentication system mismatch
-
+# auth_fix.py - Comprehensive solution to authentication issues
 import os
 import sqlite3
 import secrets
@@ -12,60 +10,99 @@ from datetime import datetime, timedelta
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Define database path
+# Database path
 CLIENT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_scanner.db')
 
 def fix_authentication_system():
-    """
-    Apply the fix to the authentication system by patching or replacing the appropriate files
-    """
-    logger.info("Starting authentication system fix...")
-    
-    # 1. Create the correct authenticate_user function with proper parameter handling
-    create_fixed_authenticate_user()
-    
-    # 2. Create a modified version of auth.py that uses the fixed function
-    result = patch_auth_file()
-    
-    # 3. Create/Update admin user with known credentials
-    create_admin_user()
-    
-    logger.info("Authentication system fix completed!")
-    return result
-
-def create_fixed_authenticate_user():
-    """Create a fixed version of the authenticate_user function in fix_auth.py"""
-    
-    fix_auth_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fix_auth.py')
-    
-    with open(fix_auth_path, 'w') as f:
-        f.write("""import os
+    """Fix the authentication system by ensuring tables exist and creating admin user"""
+    try:
+        # Connect to database
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
+        
+        # Create users table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            role TEXT DEFAULT 'client',
+            full_name TEXT,
+            created_at TEXT,
+            last_login TEXT,
+            active INTEGER DEFAULT 1
+        )
+        ''')
+        
+        # Create sessions table if not exists
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_token TEXT UNIQUE NOT NULL,
+            created_at TEXT,
+            expires_at TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        ''')
+        
+        # Create admin user if it doesn't exist
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        admin_user = cursor.fetchone()
+        
+        if not admin_user:
+            # Create salt and hash password
+            salt = secrets.token_hex(16)
+            password = 'admin123'
+            password_hash = hashlib.pbkdf2_hmac(
+                'sha256', 
+                password.encode(), 
+                salt.encode(), 
+                100000
+            ).hex()
+            
+            cursor.execute('''
+            INSERT INTO users (
+                username, 
+                email, 
+                password_hash, 
+                salt, 
+                role, 
+                full_name, 
+                created_at, 
+                active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            ''', ('admin', 'admin@example.com', password_hash, salt, 'admin', 'System Administrator', datetime.now().isoformat()))
+            
+            logger.info("Admin user created successfully")
+        else:
+            logger.info("Admin user already exists")
+        
+        # Create a monkey patch for the authenticate_user function
+        with open('fix_auth.py', 'w') as f:
+            f.write('''
+import os
 import sqlite3
 import secrets
 import hashlib
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Define database path
+# Database path
 CLIENT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_scanner.db')
 
 def authenticate_user(username_or_email, password, ip_address=None, user_agent=None):
-    \"\"\"
-    Fixed authenticate_user function that properly handles all parameters
-    
-    Args:
-        username_or_email: Username or email for login
-        password: Password for login
-        ip_address: IP address of the request (optional)
-        user_agent: User agent string (optional)
-        
-    Returns:
-        dict: Authentication result
-    \"\"\"
+    """
+    Fixed authenticate_user function that handles parameters correctly
+    """
     try:
         # Connect to database
         conn = sqlite3.connect(CLIENT_DB_PATH)
@@ -153,9 +190,8 @@ def authenticate_user(username_or_email, password, ip_address=None, user_agent=N
         logger.error(f"Authentication error: {e}")
         return {"status": "error", "message": f"Authentication failed: {str(e)}"}
 
-# Apply the fix by creating a hotfix module
 def apply_authentication_fix():
-    \"\"\"Apply authentication fix by monkey patching the original function\"\"\"
+    """Apply authentication fix by monkey patching the original function"""
     import importlib
     try:
         # Import the client_db module where the original function is
@@ -164,24 +200,87 @@ def apply_authentication_fix():
         # Replace the authenticate_user function with our fixed version
         client_db.authenticate_user = authenticate_user
         
+        logger.info("Authentication fix applied successfully")
         return True
     except Exception as e:
         logger.error(f"Failed to apply authentication fix: {e}")
         return False
 
-# Create admin user
-def create_admin_user(password="admin123"):
-    \"\"\"Create or reset the admin user password\"\"\"
+def verify_session(session_token):
+    """
+    Verify a session token
+    """
+    try:
+        if not session_token:
+            return {"status": "error", "message": "No session token provided"}
+        
+        # Connect to database
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Find the session and join with user data
+        cursor.execute('''
+        SELECT s.*, u.username, u.email, u.role, u.full_name, u.id as user_id
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.session_token = ? AND u.active = 1
+        ''', (session_token,))
+        
+        session = cursor.fetchone()
+        
+        if not session:
+            conn.close()
+            return {"status": "error", "message": "Invalid or expired session"}
+        
+        # Check if session is expired
+        if 'expires_at' in session and session['expires_at']:
+            try:
+                expires_at = datetime.fromisoformat(session['expires_at'])
+                now = datetime.now()
+                if now > expires_at:
+                    conn.close()
+                    return {"status": "error", "message": "Session expired"}
+            except Exception as date_err:
+                logger.warning(f"Error parsing session expiry: {date_err}")
+        
+        # Return success with user info
+        result = {
+            "status": "success",
+            "user": {
+                "user_id": session['user_id'],
+                "username": session['username'],
+                "email": session['email'],
+                "role": session['role'],
+                "full_name": session.get('full_name', '')
+            }
+        }
+        
+        conn.close()
+        return result
+    
+    except Exception as e:
+        logger.error(f"Session verification error: {str(e)}")
+        return {"status": "error", "message": f"Session verification failed: {str(e)}"}
+
+def create_user(username, email, password, role='client', full_name=None):
+    """
+    Create a new user
+    """
     try:
         # Connect to database
         conn = sqlite3.connect(CLIENT_DB_PATH)
         cursor = conn.cursor()
         
-        # Check if admin user exists
-        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
-        admin_user = cursor.fetchone()
+        # Check if username or email already exists
+        cursor.execute('SELECT id FROM users WHERE username = ? OR email = ?', (username, email))
+        existing_user = cursor.fetchone()
         
-        # Generate secure password hash
+        if existing_user:
+            conn.close()
+            return {"status": "error", "message": "Username or email already exists"}
+        
+        # Create salt and hash password
         salt = secrets.token_hex(16)
         password_hash = hashlib.pbkdf2_hmac(
             'sha256', 
@@ -190,143 +289,55 @@ def create_admin_user(password="admin123"):
             100000
         ).hex()
         
-        current_time = datetime.now().isoformat()
+        # Insert user
+        cursor.execute('''
+        INSERT INTO users (
+            username, email, password_hash, salt, role, full_name, created_at, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        ''', (username, email, password_hash, salt, role, full_name, datetime.now().isoformat()))
         
-        if admin_user:
-            # Update existing admin user
-            cursor.execute('''
-            UPDATE users SET 
-                password_hash = ?, 
-                salt = ?,
-                role = 'admin',
-                updated_at = ?,
-                active = 1
-            WHERE username = 'admin'
-            ''', (password_hash, salt, current_time))
-        else:
-            # Create new admin user
-            cursor.execute('''
-            INSERT INTO users (
-                username, 
-                email, 
-                password_hash, 
-                salt, 
-                role, 
-                full_name, 
-                created_at, 
-                active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-            ''', ('admin', 'admin@example.com', password_hash, salt, 'admin', 'System Administrator', current_time))
+        user_id = cursor.lastrowid
         
         conn.commit()
         conn.close()
         
-        logger.info("Admin user created/updated successfully")
-        return True
+        return {"status": "success", "user_id": user_id, "message": "User created successfully"}
+    
     except Exception as e:
-        logger.error(f"Error creating admin user: {e}")
-        return False
-
-if __name__ == "__main__":
-    # Test the fix
-    apply_authentication_fix()
-    create_admin_user()
-    print("Authentication fix applied and admin user created/updated")
-    print("Username: admin")
-    print("Password: admin123")
-""")
-    
-    logger.info("Created fixed authenticate_user function in fix_auth.py")
-    return True
-
-def patch_auth_file():
-    """Create a patched version of auth.py that uses the fixed authenticate function"""
-    
-    auth_hotfix_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auth_hotfix.py')
-    
-    with open(auth_hotfix_path, 'w') as f:
-        f.write("""# Save this as auth_hotfix.py in your application directory
-# This file contains a direct hotfix for the authentication system
-
+        logger.error(f"Error creating user: {e}")
+        return {"status": "error", "message": f"Failed to create user: {str(e)}"}
+''')
+            
+        # Create auth_hotfix.py file to patch the authenticate_user function
+        with open('auth_hotfix.py', 'w') as f:
+            f.write('''
 def register_auth_hotfix(app):
-    \"\"\"Register the authentication hotfix with the Flask app\"\"\"
+    """Register the authentication hotfix with the Flask app"""
     @app.before_first_request
     def apply_hotfix():
         # Import and apply the fix
-        from fix_auth import apply_authentication_fix, create_admin_user
+        from fix_auth import apply_authentication_fix
         
         # Apply the fix to the authenticate_user function
         apply_authentication_fix()
         
-        # Create/update admin user with known credentials
-        create_admin_user()
-        
         app.logger.info("Authentication hotfix applied successfully")
     
     return app
-""")
-    
-    logger.info("Created auth_hotfix.py for patching authentication system")
-    return True
-
-def create_admin_user():
-    """Create or update the admin user with known credentials"""
-    try:
-        # Connect to database
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        cursor = conn.cursor()
-        
-        # Check if admin user exists
-        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
-        admin_user = cursor.fetchone()
-        
-        # Generate secure password hash
-        salt = secrets.token_hex(16)
-        password = 'admin123'
-        password_hash = hashlib.pbkdf2_hmac(
-            'sha256', 
-            password.encode(), 
-            salt.encode(), 
-            100000
-        ).hex()
-        
-        current_time = datetime.now().isoformat()
-        
-        if admin_user:
-            # Update existing admin user
-            cursor.execute('''
-            UPDATE users SET 
-                password_hash = ?, 
-                salt = ?,
-                role = 'admin',
-                active = 1
-            WHERE username = 'admin'
-            ''', (password_hash, salt))
-            logger.info("Updated existing admin user")
-        else:
-            # Create new admin user
-            cursor.execute('''
-            INSERT INTO users (
-                username, 
-                email, 
-                password_hash, 
-                salt, 
-                role, 
-                full_name, 
-                created_at, 
-                active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-            ''', ('admin', 'admin@example.com', password_hash, salt, 'admin', 'System Administrator', current_time))
-            logger.info("Created new admin user")
+''')
         
         conn.commit()
         conn.close()
         
-        logger.info("Admin user created/updated - Username: admin, Password: admin123")
+        logger.info("Authentication fix created successfully")
         return True
     except Exception as e:
-        logger.error(f"Error creating admin user: {e}")
+        logger.error(f"Error fixing authentication system: {e}")
         return False
 
 if __name__ == "__main__":
     fix_authentication_system()
+    print("Authentication system fixed successfully!")
+    print("You can now login with:")
+    print("Username: admin")
+    print("Password: admin123")
