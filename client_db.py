@@ -186,11 +186,14 @@ SCHEMA_SQL = """
 -- This can be empty if you're creating tables explicitly in init_client_db
 """
 
-def register_client(user_id, business_data):
+@with_transaction
+def register_client(conn, cursor, user_id, business_data):
     """
     Register a client for a user
     
     Args:
+        conn: Database connection
+        cursor: Database cursor
         user_id (int): User ID
         business_data (dict): Business information
         
@@ -202,29 +205,18 @@ def register_client(user_id, business_data):
         if not business_data.get('business_name') or not business_data.get('business_domain') or not business_data.get('contact_email'):
             return {"status": "error", "message": "Business name, domain, and contact email are required"}
         
-        # Connect to database
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # First check if the user exists and has client role
+        # Check if user exists
         cursor.execute('SELECT id, role FROM users WHERE id = ? AND active = 1', (user_id,))
         user = cursor.fetchone()
         
         if not user:
-            conn.close()
             return {"status": "error", "message": "User not found or inactive"}
-            
-        if user['role'] != 'client':
-            conn.close()
-            return {"status": "error", "message": "Only users with client role can register as clients"}
         
         # Check if client already exists for this user
         cursor.execute('SELECT id FROM clients WHERE user_id = ?', (user_id,))
         existing_client = cursor.fetchone()
         
         if existing_client:
-            conn.close()
             return {"status": "error", "message": "Client already registered for this user"}
         
         # Generate API key
@@ -255,22 +247,24 @@ def register_client(user_id, business_data):
         
         client_id = cursor.lastrowid
         
-        # Log the action for audit trail
-        log_message = f"Client registration: User {user_id} registered client {client_id}"
-        cursor.execute('''
-        INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ''', (
-            user_id,
-            'client_registration',
-            'clients',
-            client_id,
-            log_message,
-            now
-        ))
+        # Log the action
+        try:
+            cursor.execute('''
+            INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                user_id,
+                'create_client',
+                'client',
+                client_id,
+                json.dumps(business_data),
+                now
+            ))
+        except Exception as log_error:
+            logging.warning(f"Could not add audit log: {str(log_error)}")
         
-        conn.commit()
-        conn.close()
+        # Log successful registration
+        logging.info(f"Registered client for user_id {user_id}: {business_data.get('business_name')}")
         
         return {
             "status": "success", 
@@ -280,8 +274,8 @@ def register_client(user_id, business_data):
         }
         
     except Exception as e:
-        logger.error(f"Client registration error: {e}")
-        return {"status": "error", "message": f"Failed to register client: {str(e)}"}
+        logging.error(f"Client registration error: {str(e)}")
+        raise  # Re-raise to let the transaction decorator handle it
 
 def get_client_by_user_id(user_id):
     """
