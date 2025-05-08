@@ -2316,3 +2316,139 @@ def list_clients(conn, cursor, page=1, per_page=10, filters=None):
             "total_count": total_count
         }
     }
+    
+def register_client(*args):
+    """
+    Register a client for a user - wrapper function to handle both calling conventions
+    
+    This function can be called either with:
+    - (conn, cursor, user_id, business_data) when used with @with_transaction
+    - (user_id, business_data) when called directly
+    
+    Returns:
+        dict: Client registration result
+    """
+    # Handle different argument counts
+    if len(args) == 4:
+        # Called with (conn, cursor, user_id, business_data)
+        conn, cursor, user_id, business_data = args
+        # Call the internal implementation
+        return _register_client_impl(conn, cursor, user_id, business_data)
+    elif len(args) == 2:
+        # Called with (user_id, business_data)
+        user_id, business_data = args
+        # Create connection and call the implementation
+        try:
+            conn = sqlite3.connect(CLIENT_DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            result = _register_client_impl(conn, cursor, user_id, business_data)
+            
+            if result["status"] == "success":
+                conn.commit()
+            else:
+                conn.rollback()
+                
+            conn.close()
+            return result
+        except Exception as e:
+            logging.error(f"Database error in register_client: {e}")
+            if conn:
+                conn.rollback()
+                conn.close()
+            return {"status": "error", "message": str(e)}
+    else:
+        # Invalid number of arguments
+        return {"status": "error", "message": f"register_client() takes 2 or 4 arguments but {len(args)} were given"}
+
+def _register_client_impl(conn, cursor, user_id, business_data):
+    """
+    Internal implementation of client registration
+    
+    Args:
+        conn: Database connection
+        cursor: Database cursor
+        user_id (int): User ID
+        business_data (dict): Business information
+        
+    Returns:
+        dict: Client registration result
+    """
+    try:
+        # Check for required fields
+        if not business_data.get('business_name') or not business_data.get('business_domain') or not business_data.get('contact_email'):
+            return {"status": "error", "message": "Business name, domain, and contact email are required"}
+        
+        # Check if user exists
+        cursor.execute('SELECT id, role FROM users WHERE id = ? AND active = 1', (user_id,))
+        user = cursor.fetchone()
+        
+        if not user:
+            return {"status": "error", "message": "User not found or inactive"}
+        
+        # Check if client already exists for this user
+        cursor.execute('SELECT id FROM clients WHERE user_id = ?', (user_id,))
+        existing_client = cursor.fetchone()
+        
+        if existing_client:
+            return {"status": "error", "message": "Client already registered for this user"}
+        
+        # Generate API key
+        api_key = secrets.token_hex(16)
+        
+        # Insert client record
+        now = datetime.now().isoformat()
+        cursor.execute('''
+        INSERT INTO clients (
+            user_id, business_name, business_domain, contact_email, contact_phone,
+            scanner_name, subscription_level, subscription_status, subscription_start,
+            api_key, created_at, created_by, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ''', (
+            user_id,
+            business_data.get('business_name'),
+            business_data.get('business_domain'),
+            business_data.get('contact_email'),
+            business_data.get('contact_phone', ''),
+            business_data.get('scanner_name', business_data.get('business_name') + ' Scanner'),
+            business_data.get('subscription_level', 'basic'),
+            'active',
+            now,
+            api_key,
+            now,
+            user_id
+        ))
+        
+        client_id = cursor.lastrowid
+        
+        # Log the action
+        try:
+            cursor.execute('''
+            INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                user_id,
+                'create_client',
+                'client',
+                client_id,
+                json.dumps(business_data),
+                now
+            ))
+        except Exception as log_error:
+            logging.warning(f"Could not add audit log: {str(log_error)}")
+        
+        # Log successful registration
+        logging.info(f"Registered client for user_id {user_id}: {business_data.get('business_name')}")
+        
+        return {
+            "status": "success", 
+            "client_id": client_id, 
+            "message": "Client registered successfully",
+            "api_key": api_key
+        }
+        
+    except Exception as e:
+        logging.error(f"Client registration error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
