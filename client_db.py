@@ -11,8 +11,6 @@ import secrets
 from datetime import datetime, timedelta
 from functools import wraps
 
-# Define database path
-CLIENT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_scanner.db')
 
 # Configure logging
 logging.basicConfig(
@@ -23,7 +21,9 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger(__name__)
+
+# Define database path
+CLIENT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_scanner.db')
 
 # Create the schema string for initialization
 SCHEMA_SQL = """
@@ -189,7 +189,7 @@ SCHEMA_SQL = """
 
 def with_transaction(func):
     """Decorator for database transactions with proper error handling"""
-    @functools.wraps(func)
+    @wraps(func)
     def wrapper(*args, **kwargs):
         conn = None
         try:
