@@ -1,4 +1,3 @@
-```python
 @function_calls
 @invoke name="artifacts"
 @parameter name="command" create
