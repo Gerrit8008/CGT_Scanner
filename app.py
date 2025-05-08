@@ -34,7 +34,7 @@ from client import client_bp
 from flask_login import LoginManager, current_user
 from auth_routes import auth_bp
 from debug_middleware import register_debug_middleware
-from auth_helper import create_user
+from fix_auth import create_user
 from auth import auth_bp
 from auth_hotfix import register_auth_hotfix
 from emergency_access import emergency_bp
