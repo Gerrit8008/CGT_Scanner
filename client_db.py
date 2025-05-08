@@ -329,51 +329,7 @@ def get_scan_history_by_client_id(client_id, limit=None):
     except Exception as e:
         logging.error(f"Error retrieving scan history for client: {e}")
         return []
-
-@client_bp.route('/dashboard')
-@client_required
-def dashboard(user):
-    """Client dashboard"""
-    try:
-        # Get client info for this user
-        from client_db import get_client_by_user_id
-        client = get_client_by_user_id(user['user_id'])
-        
-        if not client:
-            # Client record doesn't exist yet - redirect to complete profile
-            logger.info(f"User {user['username']} has no client profile, redirecting to complete_profile")
-            flash('Please complete your client profile', 'info')
-            return redirect(url_for('auth.complete_profile'))
-        
-        # Get client's scanners
-        from client_db import get_deployed_scanners_by_client_id
-        scanners = get_deployed_scanners_by_client_id(client['id'])
-        
-        # Get scan history
-        from client_db import get_scan_history_by_client_id
-        scan_history = get_scan_history_by_client_id(client['id'], limit=5)
-        
-        # Count total scans
-        total_scans = len(get_scan_history_by_client_id(client['id']))
-        
-        # Pass client as user_client for template compatibility
-        return render_template(
-            'client/client-dashboard.html',
-            user=user,
-            client=client,
-            user_client=client,  # Add this line to make user_client available
-            scanners=scanners.get('scanners', []),
-            scan_history=scan_history,
-            total_scans=total_scans
-        )
-    except Exception as e:
-        logger.error(f"Error displaying client dashboard: {str(e)}")
-        # Pass empty user_client to avoid template errors
-        return render_template('client/client-dashboard.html', 
-                              user=user, 
-                              error=str(e),
-                              user_client={})  # Add this to provide an empty user_client
-        
+     
 def with_transaction(func):
     """Decorator for database transactions with proper error handling"""
     @wraps(func)
