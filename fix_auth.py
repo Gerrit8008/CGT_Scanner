@@ -1,12 +1,3 @@
-```python
-@function_calls
-@invoke name="artifacts"
-@parameter name="command" create
-@parameter name="id" fix_auth
-@parameter name="type" application/vnd.ant.code
-@parameter name="language" python
-@parameter name="title" Enhanced fix_auth.py
-@parameter name="content"
 # fix_auth.py - Consolidated authentication functions
 import os
 import sqlite3
@@ -406,5 +397,3 @@ def apply_authentication_fix():
 
 # Run the fix when this module is imported
 apply_authentication_fix()
-@invoke
-@function_calls
