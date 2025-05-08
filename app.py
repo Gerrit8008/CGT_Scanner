@@ -235,6 +235,43 @@ def list_routes():
         })
     return jsonify(routes)
 
+# Add API routes for admin functions
+@app.route('/auth/api/login-stats')
+def api_login_stats():
+    """API endpoint for login statistics"""
+    from client_db import get_login_stats
+    
+    stats = get_login_stats()
+    return jsonify(stats)
+
+@app.route('/auth/api/check-username', methods=['POST'])
+def api_check_username():
+    """API endpoint to check username availability"""
+    from client_db import check_username_availability
+    
+    data = request.get_json()
+    username = data.get('username')
+    
+    if not username:
+        return jsonify({'available': False, 'message': 'No username provided'})
+    
+    result = check_username_availability(username)
+    return jsonify(result)
+
+@app.route('/auth/api/check-email', methods=['POST'])
+def api_check_email():
+    """API endpoint to check email availability"""
+    from client_db import check_email_availability
+    
+    data = request.get_json()
+    email = data.get('email')
+    
+    if not email:
+        return jsonify({'available': False, 'message': 'No email provided'})
+    
+    result = check_email_availability(email)
+    return jsonify(result)
+
 @login_manager.user_loader
 def load_user(user_id):
     # This function should return a user object or None
