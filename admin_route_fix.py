@@ -601,6 +601,8 @@ def create_basic_templates():
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
+</html>
+            """,
     <div class="container-fluid">
         <div class="row">
             <!-- Sidebar -->
