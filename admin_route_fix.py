@@ -307,7 +307,7 @@ def create_basic_templates():
                 logger.info(f"Created error template at {error_path}")
         
         # Define basic templates
-        templates = {
+        templates = 
             'subscription-management.html': """
 <!DOCTYPE html>
 <html lang="en">
@@ -862,8 +862,7 @@ def create_basic_templates():
                                 alert('An error occurred while toggling scanner status.');
                             });
                         }
-                    };
-                }                    
+                    };                    
 </body>
 </html>
         """,
