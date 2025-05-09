@@ -42,6 +42,7 @@ from admin_fix_integration import apply_admin_fixes
 from admin_route_fix import apply_admin_route_fixes
 from route_fix import fix_admin_routes
 from admin_fix_web import add_admin_fix_route
+from admin_fix_page import add_fix_page
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -320,6 +321,7 @@ app.register_blueprint(emergency_bp)
 
 apply_admin_fixes(app)
 add_admin_fix_route(app)
+app = add_fix_page(app)
 
 try:
     from register_routes import register_all_routes
