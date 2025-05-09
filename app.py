@@ -42,7 +42,6 @@ from admin_fix_integration import apply_admin_fixes
 from admin_route_fix import apply_admin_route_fixes
 from route_fix import fix_admin_routes
 from admin_fix_web import add_admin_fix_route
-from admin_fix_page import add_fix_page
 from add_admin_fix import integrate_admin_fix
 # Import scan functionality
 from scan import (
