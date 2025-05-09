@@ -14,7 +14,15 @@ from client_db import (
     get_scanner_by_id,
     update_scanner_config,
     regenerate_scanner_api_key,
-    log_scan
+    log_scan,
+    get_scan_history,
+    get_scanner_stats,
+    update_client,
+    get_client_statistics,
+    get_recent_activities,
+    get_available_scanners_for_client,
+    get_client_dashboard_data,
+    format_scan_results_for_client
 )
 
 # Define client blueprint
@@ -24,6 +32,39 @@ client_bp = Blueprint('client', __name__, url_prefix='/client')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
+import os
+import logging
+import json
+from datetime import datetime
+from functools import wraps
+
+# Import authentication utilities
+from auth_utils import verify_session
+from client_db import (
+    get_client_by_user_id, 
+    get_deployed_scanners_by_client_id,
+    get_scan_history_by_client_id,
+    get_scanner_by_id,
+    update_scanner_config,
+    regenerate_scanner_api_key,
+    log_scan,
+    get_scan_history,
+    get_scanner_stats,
+    update_client,
+    get_client_statistics,
+    get_recent_activities,
+    get_available_scanners_for_client,
+    get_client_dashboard_data,
+    format_scan_results_for_client
+)
+
+# Define client blueprint
+client_bp = Blueprint('client', __name__, url_prefix='/client')
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Middleware to require client login with role check
 def client_required(f):
@@ -61,7 +102,7 @@ def client_required(f):
         return f(*args, **kwargs)
     
     return decorated_function
-    
+
 @client_bp.route('/dashboard')
 @client_required
 def dashboard(user):
@@ -76,32 +117,53 @@ def dashboard(user):
             flash('Please complete your client profile', 'info')
             return redirect(url_for('auth.complete_profile'))
         
-        # Get client's scanners
-        scanners = get_deployed_scanners_by_client_id(client['id'])
+        # Get comprehensive dashboard data
+        dashboard_data = get_client_dashboard_data(client['id'])
         
-        # Get scan history
-        scan_history = get_scan_history_by_client_id(client['id'], limit=5)
-        
-        # Count total scans
-        total_scans = len(get_scan_history_by_client_id(client['id']))
+        if not dashboard_data:
+            # Fallback to basic data if comprehensive fetch fails
+            scanners = get_deployed_scanners_by_client_id(client['id'])
+            scan_history = get_scan_history_by_client_id(client['id'], limit=5)
+            total_scans = len(get_scan_history_by_client_id(client['id']))
+            
+            dashboard_data = {
+                'client': client,
+                'stats': {
+                    'scanners_count': len(scanners.get('scanners', [])),
+                    'total_scans': total_scans,
+                    'avg_security_score': 'N/A',
+                    'reports_count': 0
+                },
+                'scanners': scanners.get('scanners', []),
+                'scan_history': scan_history,
+                'recent_activities': []
+            }
         
         # Pass client as user_client for template compatibility
         return render_template(
             'client/client-dashboard.html',
             user=user,
-            client=client,
-            user_client=client,  # Add this line to make user_client available
-            scanners=scanners.get('scanners', []),
-            scan_history=scan_history,
-            total_scans=total_scans
+            client=dashboard_data['client'],
+            user_client=dashboard_data['client'],
+            scanners=dashboard_data['scanners'],
+            scan_history=dashboard_data['scan_history'],
+            total_scans=dashboard_data['stats']['total_scans'],
+            client_stats=dashboard_data['stats'],
+            recent_activities=dashboard_data['recent_activities']
         )
     except Exception as e:
         logger.error(f"Error displaying client dashboard: {str(e)}")
-        # Pass empty user_client to avoid template errors
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        # Fallback to basic dashboard
         return render_template('client/client-dashboard.html', 
                               user=user, 
                               error=str(e),
-                              user_client={})  # Add this to provide an empty user_client
+                              user_client={},
+                              scanners=[],
+                              scan_history=[],
+                              total_scans=0)
 
 @client_bp.route('/scanners')
 @client_required
@@ -164,12 +226,16 @@ def scanner_view(user, scanner_id):
         # Get scan history for this scanner
         scan_history = get_scan_history_by_client_id(client['id'], limit=10)
         
+        # Get scanner statistics
+        stats = get_scanner_stats(scanner_id)
+        
         return render_template(
             'client/scanner-view.html',
             user=user,
             client=client,
             scanner=scanner,
-            scan_history=scan_history
+            scan_history=scan_history,
+            stats=stats
         )
     except Exception as e:
         logger.error(f"Error displaying scanner details: {str(e)}")
@@ -212,13 +278,13 @@ def scanner_edit(user, scanner_id):
             # Handle file uploads
             if 'logo' in request.files and request.files['logo'].filename:
                 logo_file = request.files['logo']
-                # Save logo file (implement file handling)
-                # scanner_data['logo_path'] = saved_path
+                # TODO: Implement file handling
+                # scanner_data['logo_path'] = save_uploaded_file(logo_file)
             
             if 'favicon' in request.files and request.files['favicon'].filename:
                 favicon_file = request.files['favicon']
-                # Save favicon file (implement file handling)
-                # scanner_data['favicon_path'] = saved_path
+                # TODO: Implement file handling
+                # scanner_data['favicon_path'] = save_uploaded_file(favicon_file)
             
             # Update scanner
             result = update_scanner_config(scanner_id, scanner_data, user['user_id'])
@@ -239,7 +305,7 @@ def scanner_edit(user, scanner_id):
         logger.error(f"Error editing scanner: {str(e)}")
         flash('An error occurred while editing the scanner', 'danger')
         return redirect(url_for('client.scanners'))
-
+        
 @client_bp.route('/scanners/<int:scanner_id>/stats')
 @client_required
 def scanner_stats(user, scanner_id):
@@ -260,15 +326,18 @@ def scanner_stats(user, scanner_id):
             return redirect(url_for('client.scanners'))
         
         # Get scan statistics
-        from client_db import get_scanner_stats
         stats = get_scanner_stats(scanner_id)
+        
+        # Get scan history for chart data
+        scan_history = get_scan_history_by_client_id(client['id'])
         
         return render_template(
             'client/scanner-stats.html',
             user=user,
             client=client,
             scanner=scanner,
-            stats=stats
+            stats=stats,
+            scan_history=scan_history
         )
     except Exception as e:
         logger.error(f"Error displaying scanner stats: {str(e)}")
@@ -299,7 +368,6 @@ def scanner_regenerate_api_key(user, scanner_id):
     except Exception as e:
         logger.error(f"Error regenerating API key: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)})
-
 @client_bp.route('/reports')
 @client_required
 def reports(user):
@@ -326,7 +394,6 @@ def reports(user):
             filters['date_to'] = request.args.get('date_to')
         
         # Get scan history with pagination
-        from client_db import get_scan_history
         result = get_scan_history(client['id'], page=page, per_page=per_page)
         
         # Get list of client's scanners for filter dropdown
@@ -368,14 +435,16 @@ def report_view(user, scan_id):
             return redirect(url_for('client.reports'))
         
         # Verify this scan belongs to the client
-        # Note: You may need to add client_id to scan results table
-        # or verify through scanner relationship
+        # TODO: Implement proper ownership verification
+        
+        # Format scan results for client-friendly display
+        formatted_scan = format_scan_results_for_client(scan)
         
         return render_template(
             'client/report-view.html',
             user=user,
             client=client,
-            scan=scan
+            scan=formatted_scan or scan
         )
     except Exception as e:
         logger.error(f"Error displaying report: {str(e)}")
@@ -395,25 +464,45 @@ def settings(user):
             return redirect(url_for('auth.complete_profile'))
         
         if request.method == 'POST':
-            # Process settings update
-            settings_data = {
-                'business_name': request.form.get('business_name'),
-                'business_domain': request.form.get('business_domain'),
-                'contact_email': request.form.get('contact_email'),
-                'contact_phone': request.form.get('contact_phone'),
-                'notification_email': request.form.get('notification_email', '1') == '1',
-                'notification_frequency': request.form.get('notification_frequency', 'weekly')
-            }
+            action = request.form.get('action')
             
-            # Update client settings
-            from client_db import update_client
-            result = update_client(client['id'], settings_data, user['user_id'])
+            if action == 'update_profile':
+                # Process profile update
+                settings_data = {
+                    'business_name': request.form.get('business_name'),
+                    'business_domain': request.form.get('business_domain'),
+                    'contact_email': request.form.get('contact_email'),
+                    'contact_phone': request.form.get('contact_phone')
+                }
+                
+                result = update_client(client['id'], settings_data, user['user_id'])
+                
+                if result['status'] == 'success':
+                    flash('Profile updated successfully', 'success')
+                else:
+                    flash(f'Failed to update profile: {result.get("message", "Unknown error")}', 'danger')
             
-            if result['status'] == 'success':
-                flash('Settings updated successfully', 'success')
-                return redirect(url_for('client.settings'))
-            else:
-                flash(f'Failed to update settings: {result.get("message", "Unknown error")}', 'danger')
+            elif action == 'update_notifications':
+                # Process notification settings
+                notification_data = {
+                    'notification_email': request.form.get('notification_email', '0') == '1',
+                    'notification_email_address': request.form.get('notification_email_address'),
+                    'notify_scan_complete': request.form.get('notify_scan_complete', '0') == '1',
+                    'notify_critical_issues': request.form.get('notify_critical_issues', '0') == '1',
+                    'notify_weekly_reports': request.form.get('notify_weekly_reports', '0') == '1',
+                    'notification_frequency': request.form.get('notification_frequency', 'weekly')
+                }
+                
+                result = update_client(client['id'], notification_data, user['user_id'])
+                
+                if result['status'] == 'success':
+                    flash('Notification preferences updated', 'success')
+                else:
+                    flash(f'Failed to update preferences: {result.get("message", "Unknown error")}', 'danger')
+            
+            # Handle other actions...
+            
+            return redirect(url_for('client.settings'))
         
         return render_template(
             'client/settings.html',
@@ -424,7 +513,7 @@ def settings(user):
         logger.error(f"Error in settings: {str(e)}")
         flash('An error occurred while loading settings', 'danger')
         return redirect(url_for('client.dashboard'))
-        
+
 @client_bp.route('/profile')
 @client_required
 def profile(user):
@@ -437,48 +526,24 @@ def profile(user):
             flash('Please complete your client profile', 'info')
             return redirect(url_for('auth.complete_profile'))
         
+        # Get statistics for profile display
+        stats = get_client_statistics(client['id'])
+        
+        # Get recent activities
+        recent_activities = get_recent_activities(client['id'], 5)
+        
+        # Get available scanners
+        scanners = get_available_scanners_for_client(client['id'])
+        
         return render_template(
             'client/profile.html',
             user=user,
-            client=client
+            client=client,
+            client_stats=stats,
+            recent_activities=recent_activities,
+            scanners=scanners
         )
     except Exception as e:
         logger.error(f"Error displaying client profile: {str(e)}")
         flash('An error occurred while loading your profile', 'danger')
         return redirect(url_for('client.dashboard'))
-
-@client_bp.route('/profile/update', methods=['POST'])
-@client_required
-def update_profile(user):
-    """Update client profile"""
-    try:
-        # Get client info
-        client = get_client_by_user_id(user['user_id'])
-        
-        if not client:
-            flash('Please complete your client profile first', 'warning')
-            return redirect(url_for('auth.complete_profile'))
-        
-        # Get form data
-        client_data = {
-            'business_name': request.form.get('business_name'),
-            'business_domain': request.form.get('business_domain'),
-            'contact_email': request.form.get('contact_email'),
-            'contact_phone': request.form.get('contact_phone'),
-            'scanner_name': request.form.get('scanner_name')
-        }
-        
-        # Update client
-        from client_db import update_client
-        result = update_client(client['id'], client_data, user['user_id'])
-        
-        if result['status'] == 'success':
-            flash('Profile updated successfully', 'success')
-        else:
-            flash(f'Failed to update profile: {result.get("message", "Unknown error")}', 'danger')
-        
-        return redirect(url_for('client.profile'))
-    except Exception as e:
-        logger.error(f"Error updating client profile: {str(e)}")
-        flash('An error occurred while updating your profile', 'danger')
-        return redirect(url_for('client.profile'))
