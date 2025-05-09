@@ -863,6 +863,7 @@ def create_basic_templates():
                             });
                         }
                     };
+                }                    
 </body>
 </html>
         """,
