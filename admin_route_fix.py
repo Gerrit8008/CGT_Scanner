@@ -307,7 +307,7 @@ def create_basic_templates():
                 logger.info(f"Created error template at {error_path}")
         
         # Define basic templates
-        templates = 
+        templates = {
             'subscription-management.html': """
 <!DOCTYPE html>
 <html lang="en">
@@ -862,7 +862,46 @@ def create_basic_templates():
                                 alert('An error occurred while toggling scanner status.');
                             });
                         }
-                    };                    
+                    };
+                });
+            });
+        });
+    </script>
 </body>
 </html>
-        """,
+            """
+        }
+        
+        # Create each template file if it doesn't exist
+        for filename, content in templates.items():
+            file_path = os.path.join(template_dir, filename)
+            if not os.path.exists(file_path):
+                with open(file_path, 'w') as f:
+                    f.write(content)
+                    logger.info(f"Created template: {file_path}")
+            else:
+                logger.info(f"Template already exists: {file_path}")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error creating templates: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+# If script is run directly
+if __name__ == "__main__":
+    try:
+        logger.info("Applying admin route fixes...")
+        result = apply_admin_route_fixes()
+        if result:
+            logger.info("Admin route fixes applied successfully!")
+            sys.exit(0)
+        else:
+            logger.error("Failed to apply admin route fixes.")
+            sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unhandled exception: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.exit(1)
