@@ -1,3 +1,4 @@
+
 import logging
 import os
 import sqlite3
@@ -42,6 +43,7 @@ from admin_fix_integration import apply_admin_fixes
 from admin_route_fix import apply_admin_route_fixes
 from route_fix import fix_admin_routes
 from admin_fix_web import add_admin_fix_route
+
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -74,10 +76,6 @@ from scan import (
     calculate_industry_percentile
 )
 
-def add_fix_page(app):
-    """Simple replacement for the original function"""
-    return app
-    
 # Define upload folder for file uploads
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -85,27 +83,106 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # Make sure the directory exists
 os.makedirs(os.path.dirname(CLIENT_DB_PATH), exist_ok=True)
 
-# Check if this is first run (database doesn't exist)
-if not os.path.exists(CLIENT_DB_PATH):
-    from setup import setup_database
-    setup_database()
-    
 # Import database functionality
 from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
 
-# Register blueprints after initializing the app
-def create_app():
-    """Create and configure the Flask application"""
+# Load environment variables
+load_dotenv()
+
+# Constants
+SEVERITY = {
+    "Critical": 10,
+    "High": 7,
+    "Medium": 5,
+    "Low": 2,
+    "Info": 1
+}
+
+SEVERITY_ICONS = {
+    "Critical": "❌",
+    "High": "⚠️",
+    "Medium": "⚠️",
+    "Low": "ℹ️"
+}
+
+GATEWAY_PORT_WARNINGS = {
+    21: ("FTP (insecure)", "High"),
+    23: ("Telnet (insecure)", "High"),
+    80: ("HTTP (no encryption)", "Medium"),
+    443: ("HTTPS", "Low"),
+    3389: ("Remote Desktop (RDP)", "Critical"),
+    5900: ("VNC", "High"),
+    22: ("SSH", "Low"),
+}
+
+# Setup logging
+def setup_logging():
+    """Configure application logging"""
+    # Create logs directory
+    logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
     
-def init_database():
-    """Initialize all database tables if they don't exist"""
-    logging.info("Starting database initialization...")
+    log_filename = os.path.join(logs_dir, f"security_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
     
-    # Create database directory if it doesn't exist
-    db_dir = os.path.dirname(CLIENT_DB_PATH)
-    if not os.path.exists(db_dir):
-        os.makedirs(db_dir)
+    # Configure root logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
     
+    # Remove any existing handlers
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # Create formatters
+    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(funcName)s - Line %(lineno)d - %(message)s')
+    console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # File handler (detailed)
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(file_formatter)
+    
+    # Console handler (less detailed)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(console_formatter)
+    
+    # Add handlers
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    logger.info("Application started")
+    logger.info(f"Detailed logs will be saved to: {log_filename}")
+    
+    return logger
+
+def log_system_info():
+    """Log details about the system environment"""
+    logger = logging.getLogger(__name__)
+    
+    logger.info("----- System Information -----")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Platform: {platform.platform()}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    logger.info(f"Database path: {DB_PATH}")
+    
+    # Test database connection
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT sqlite_version()")
+        version = cursor.fetchone()
+        logger.info(f"SQLite version: {version[0]}")
+        conn.close()
+        logger.info("Database connection successful")
+    except Exception as e:
+        logger.warning(f"Database connection failed: {e}")
+    
+    logger.info("-----------------------------")
+
+# Initialize logging
+logger = setup_logging()
+log_system_info()
+
 def create_app():
     """Create and configure the Flask application"""
     from flask import Flask
@@ -295,12 +372,16 @@ def init_database():
     conn.close()
     logging.info("Database initialization completed")
 
-# Initialize logging
-logger = setup_logging()
-log_system_info()
-
-# Initialize the database
+# Initialize the database first
 init_database()
+
+# Check if this is first run (database doesn't exist)
+if not os.path.exists(CLIENT_DB_PATH):
+    try:
+        from setup import setup_database
+        setup_database()
+    except Exception as e:
+        logging.warning(f"Could not run setup_database: {e}")
 
 # Create the Flask app
 try:
@@ -315,10 +396,23 @@ except Exception as app_create_error:
     limiter = None
 
 # Initialize Flask-Login
-from flask_login import LoginManager
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
+
+@login_manager.user_loader
+def load_user(user_id):
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+        user = cursor.fetchone()
+        conn.close()
+        return user if user else None
+    except Exception as e:
+        logging.error(f"Error loading user {user_id}: {e}")
+        return None
 
 # Apply admin configuration
 try:
@@ -376,73 +470,6 @@ except ImportError:
     logging.warning("Could not import admin_routes_bp")
 except Exception as e:
     logging.error(f"Error registering admin_routes_bp: {e}")
-
-# User loader function
-@login_manager.user_loader
-def load_user(user_id):
-    # This function should return a user object or None
-    # Based on your code structure, you might need to:
-    conn = sqlite3.connect(CLIENT_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
-    user = cursor.fetchone()
-    conn.close()
-    return user if user else None
-
-# Load environment variables
-load_dotenv()
-
-# Initialize Flask-Login
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'auth.login'
-
-def ensure_users_table():
-    try:
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        cursor = conn.cursor()
-        
-        # Create users table if not exists
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            email TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            salt TEXT NOT NULL,
-            role TEXT DEFAULT 'client',
-            full_name TEXT,
-            created_at TEXT,
-            last_login TEXT,
-            active INTEGER DEFAULT 1
-        )
-        ''')
-        
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        print(f"Error ensuring users table: {e}")
-        return False
-        
-@app.before_request
-def debug_auth_flow():
-    """Debug middleware specifically for authentication flow"""
-    if request.path.startswith('/auth/login'):
-        app.logger.debug(f"Auth request: {request.method} {request.path}")
-        app.logger.debug(f"Session data: {session}")
-        app.logger.debug(f"Form data: {request.form}")
-        app.logger.debug(f"Args: {request.args}")
-
-@app.after_request
-def debug_auth_response(response):
-    """Debug middleware for authentication responses"""
-    if request.path.startswith('/auth/login'):
-        app.logger.debug(f"Auth response: {response.status_code}")
-        if response.status_code in (301, 302, 303, 307, 308):
-            app.logger.debug(f"Redirect location: {response.location}")
-    return response
     
 @app.route('/auth_status')
 def auth_status():
@@ -505,115 +532,6 @@ def api_check_email():
     
     result = check_email_availability(email)
     return jsonify(result)
-
-@login_manager.user_loader
-def load_user(user_id):
-    # This function should return a user object or None
-    # Based on your code structure, you might need to:
-    conn = sqlite3.connect(CLIENT_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
-    user = cursor.fetchone()
-    conn.close()
-    return user if user else None
-
-# Load environment variables
-load_dotenv()
-    
-# Constants
-SEVERITY = {
-    "Critical": 10,
-    "High": 7,
-    "Medium": 5,
-    "Low": 2,
-    "Info": 1
-}
-
-SEVERITY_ICONS = {
-    "Critical": "❌",
-    "High": "⚠️",
-    "Medium": "⚠️",
-    "Low": "ℹ️"
-}
-
-GATEWAY_PORT_WARNINGS = {
-    21: ("FTP (insecure)", "High"),
-    23: ("Telnet (insecure)", "High"),
-    80: ("HTTP (no encryption)", "Medium"),
-    443: ("HTTPS", "Low"),
-    3389: ("Remote Desktop (RDP)", "Critical"),
-    5900: ("VNC", "High"),
-    22: ("SSH", "Low"),
-}
-
-# Setup logging
-def setup_logging():
-    """Configure application logging"""
-    # Create logs directory
-    logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
-    os.makedirs(logs_dir, exist_ok=True)
-    
-    log_filename = os.path.join(logs_dir, f"security_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    
-    # Configure root logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    
-    # Remove any existing handlers
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-    
-    # Create formatters
-    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(funcName)s - Line %(lineno)d - %(message)s')
-    console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    
-    # File handler (detailed)
-    file_handler = logging.FileHandler(log_filename)
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(file_formatter)
-    
-    # Console handler (less detailed)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(console_formatter)
-    
-    # Add handlers
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    logger.info("Application started")
-    logger.info(f"Detailed logs will be saved to: {log_filename}")
-    
-    return logger
-
-def log_system_info():
-    """Log details about the system environment"""
-    logger = logging.getLogger(__name__)
-    
-    logger.info("----- System Information -----")
-    logger.info(f"Python version: {sys.version}")
-    logger.info(f"Platform: {platform.platform()}")
-    logger.info(f"Working directory: {os.getcwd()}")
-    logger.info(f"Database path: {DB_PATH}")
-    
-    # Test database connection
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT sqlite_version()")
-        version = cursor.fetchone()
-        logger.info(f"SQLite version: {version[0]}")
-        conn.close()
-        logger.info("Database connection successful")
-    except Exception as e:
-        logger.warning(f"Database connection failed: {e}")
-    
-    logger.info("-----------------------------")
-
-# Set up logging and log system info
-logger = setup_logging()
-log_system_info()
 
 @app.route('/db_fix')
 def direct_db_fix():
