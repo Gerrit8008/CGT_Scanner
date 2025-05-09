@@ -1,0 +1,61 @@
+## templates/admin/reports-dashboard.html
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Include standard head content similar to other admin pages -->
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Include sidebar similar to other admin pages -->
+            
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10 ms-auto main-content">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2>Reports Dashboard</h2>
+                    <div>
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#customReportModal">
+                            <i class="bi bi-file-earmark-text me-2"></i> Generate Custom Report
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Include flash messages -->
+                
+                <!-- Report Type & Time Range Selection -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body">
+                        <!-- Report type and time range selectors -->
+                    </div>
+                </div>
+                
+                <!-- Statistics Cards -->
+                <div class="row g-4 mb-4">
+                    <!-- Stats cards -->
+                </div>
+                
+                <!-- Main Report Chart -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body">
+                        <!-- Canvas for main report chart -->
+                    </div>
+                </div>
+                
+                <!-- Report Details Tables -->
+                <div class="row g-4">
+                    <!-- Report detail tables -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Custom Report Modal -->
+    <div class="modal fade" id="customReportModal" tabindex="-1" aria-labelledby="customReportModalLabel" aria-hidden="true">
+        <!-- Custom report form modal -->
+    </div>
+    
+    <!-- Include standard JavaScript files -->
+</body>
+</html>
+```
