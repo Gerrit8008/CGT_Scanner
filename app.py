@@ -106,6 +106,37 @@ def init_database():
     if not os.path.exists(db_dir):
         os.makedirs(db_dir)
     
+def create_app():
+    """Create and configure the Flask application"""
+    from flask import Flask
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    
+    app = Flask(__name__)
+    app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+    
+    # Enable CORS
+    CORS(app)
+    
+    # Create rate limiter
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=["200 per day", "50 per hour"],
+        storage_uri="memory://"
+    )
+    
+    return app, limiter
+
+def init_database():
+    """Initialize all database tables if they don't exist"""
+    logging.info("Starting database initialization...")
+    
+    # Create database directory if it doesn't exist
+    db_dir = os.path.dirname(CLIENT_DB_PATH)
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+    
     # Connect to the database
     conn = sqlite3.connect(CLIENT_DB_PATH)
     cursor = conn.cursor()
@@ -263,66 +294,64 @@ def init_database():
     
     conn.close()
     logging.info("Database initialization completed")
-    
-    # Initialize app
-    #app, limiter = create_app()
-    result = create_app()
-    if result is None:
-        # Create a basic app and limiter if the function fails
-        from flask import Flask
-        from flask_limiter import Limiter
-        from flask_limiter.util import get_remote_address
-    
-        app = Flask(__name__)
-        app.secret_key = 'temporary_secret_key'
-    
-        # Create a basic limiter
-        limiter = Limiter(
-            app=app,
-            key_func=get_remote_address,
-            default_limits=["200 per day", "50 per hour"],
-            storage_uri="memory://"
-        )
-    else:
-        # Unpack if it's a tuple
-        try:
-            app, limiter = result
-        except (TypeError, ValueError):
-            # If it's not unpackable, use the result as app and create a basic limiter
-            app = result
-            from flask_limiter import Limiter
-            from flask_limiter.util import get_remote_address
-            limiter = Limiter(
-                app=app,
-                key_func=get_remote_address,
-                default_limits=["200 per day", "50 per hour"],
-                storage_uri="memory://"
-            )
-        
-    init_database()
 
-    # Now we can apply admin route fixes after the app is created
-    print("Applying admin route fixes...")
-    success = apply_admin_route_fixes(app)
-    if success:
-        print("Admin route fixes applied successfully!")
-    else:
-        print("Failed to apply admin route fixes. Check the logs for details.")
+# Initialize logging
+logger = setup_logging()
+log_system_info()
+
+# Initialize the database
+init_database()
+
+# Create the Flask app
+try:
+    app, limiter = create_app()
+    logging.info("Flask app created successfully")
+except Exception as app_create_error:
+    logging.error(f"Error creating Flask app: {app_create_error}")
+    logging.debug(f"Exception traceback: {traceback.format_exc()}")
+    # Create a basic app as fallback
+    app = Flask(__name__)
+    app.secret_key = 'fallback_secret_key'
+    limiter = None
+
+# Initialize Flask-Login
+from flask_login import LoginManager
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'auth.login'
 
 # Apply admin configuration
-app = configure_admin(app)
-register_debug_middleware(app)
+try:
+    app = configure_admin(app)
+    logging.info("Admin configuration applied successfully")
+except Exception as config_error:
+    logging.error(f"Error applying admin configuration: {config_error}")
+    logging.debug(f"Exception traceback: {traceback.format_exc()}")
+
 # Register blueprints
-app.register_blueprint(auth_bp)
-app.register_blueprint(admin_bp)
-app.register_blueprint(api_bp)
-app.register_blueprint(scanner_bp)
-app.register_blueprint(client_bp) 
-app.register_blueprint(emergency_bp)
+try:
+    register_debug_middleware(app)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(scanner_bp)
+    app.register_blueprint(client_bp) 
+    app.register_blueprint(emergency_bp)
+    logging.info("Blueprints registered successfully")
+except Exception as blueprint_error:
+    logging.error(f"Error registering blueprints: {blueprint_error}")
+    logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
-apply_admin_fixes(app)
-add_admin_fix_route(app)
+# Apply fixes
+try:
+    apply_admin_fixes(app)
+    add_admin_fix_route(app)
+    logging.info("Fixes applied successfully")
+except Exception as fix_error:
+    logging.error(f"Error applying fixes: {fix_error}")
+    logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
+# Register routes
 try:
     from register_routes import register_all_routes
     app = register_all_routes(app)
@@ -339,13 +368,30 @@ except Exception as register_error:
     except Exception as basic_error:
         logging.error(f"Failed to register basic blueprints: {basic_error}")
 
-    try:
-        from admin_routes import admin_routes_bp
-        app.register_blueprint(admin_routes_bp)
-    except ImportError:
-        print("Could not import admin_routes_bp")
-    except Exception as e:
-        print(f"Error registering admin_routes_bp: {e}")
+try:
+    from admin_routes import admin_routes_bp
+    app.register_blueprint(admin_routes_bp)
+    logging.info("Admin routes blueprint registered")
+except ImportError:
+    logging.warning("Could not import admin_routes_bp")
+except Exception as e:
+    logging.error(f"Error registering admin_routes_bp: {e}")
+
+# User loader function
+@login_manager.user_loader
+def load_user(user_id):
+    # This function should return a user object or None
+    # Based on your code structure, you might need to:
+    conn = sqlite3.connect(CLIENT_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+    user = cursor.fetchone()
+    conn.close()
+    return user if user else None
+
+# Load environment variables
+load_dotenv()
 
 # Initialize Flask-Login
 login_manager = LoginManager()
