@@ -3235,32 +3235,34 @@ def get_client_by_api_key(conn, cursor, api_key):
     return client
 
 @with_transaction
-def get_client_by_subdomain(conn, cursor, subdomain):
-    """Get client details by subdomain"""
-    cursor.execute('''
-    SELECT c.*, cu.*, ds.subdomain, ds.deploy_status
-    FROM clients c
-    LEFT JOIN customizations cu ON c.id = cu.client_id
-    LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
-    WHERE ds.subdomain = ?
-    ''', (subdomain,))
+def get_client_by_subdomain(conn, subdomain):
+    """Get client details by subdomain
     
-    row = cursor.fetchone()
-    
-    if not row:
+    Args:
+        conn: Database connection
+        subdomain: Client subdomain to look up
+        
+    Returns:
+        Client details dict or None if not found
+    """
+    try:
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+        SELECT c.*, d.* 
+        FROM clients c
+        JOIN deployed_scanners d ON c.id = d.client_id
+        WHERE d.subdomain = ?
+        ''', (subdomain,))
+        
+        result = cursor.fetchone()
+        
+        if result:
+            return dict(result)
         return None
-    
-    # Convert row to dict
-    client = dict(row)
-    
-    # Convert default_scans JSON to list
-    if client.get('default_scans'):
-        try:
-            client['default_scans'] = json.loads(client['default_scans'])
-        except:
-            client['default_scans'] = []
-    
-    return client
+    except Exception as e:
+        logging.error(f"Error retrieving client by subdomain: {e}")
+        return None
 
 @with_transaction
 def list_users(conn, cursor, page=1, per_page=10):
