@@ -8,7 +8,7 @@ from client_db import get_db_connection, list_clients, get_client_by_id, update_
 from auth_utils import verify_session
 
 # Define client blueprint
-client_bp = Blueprint('client', __name__, url_prefix='/admin')
+client_bp = Blueprint('client', __name__, url_prefix='/client')
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
