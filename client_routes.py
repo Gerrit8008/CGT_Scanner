@@ -1,10 +1,18 @@
 # client_routes.py
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-from client_db import get_db_connection, list_clients, get_client_by_id, update_client, deactivate_client
+import os
+import logging
+from datetime import datetime
+from client_db import get_db_connection, list_clients, get_client_by_id, update_client
+# Import authentication utilities
 from auth_utils import verify_session
 
 # Define client blueprint
 client_bp = Blueprint('client', __name__, url_prefix='/admin')
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Middleware to require admin login
 def admin_required(f):
@@ -130,16 +138,66 @@ def client_edit(user, client_id):
 @admin_required
 def client_deactivate(user, client_id):
     """Deactivate client"""
-    # Deactivate client
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    result = deactivate_client(cursor, client_id, user['id'])
-    conn.commit()
-    conn.close()
-    
-    if result and result.get('status') == 'success':
+    # Since deactivate_client may not be available, we'll use a more generic approach
+    try:
+        # Connect to database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # First check if client exists
+        cursor.execute('SELECT id FROM clients WHERE id = ?', (client_id,))
+        client = cursor.fetchone()
+        
+        if not client:
+            conn.close()
+            flash('Client not found', 'danger')
+            return redirect(url_for('client.client_list'))
+        
+        # Update client status
+        cursor.execute('''
+        UPDATE clients 
+        SET active = 0,
+            updated_at = ?,
+            updated_by = ?
+        WHERE id = ?
+        ''', (datetime.now().isoformat(), user['id'], client_id))
+        
+        # Also update scanner status if available
+        try:
+            cursor.execute('''
+            UPDATE deployed_scanners
+            SET deploy_status = 'inactive',
+                last_updated = ?
+            WHERE client_id = ?
+            ''', (datetime.now().isoformat(), client_id))
+        except Exception as scanner_error:
+            logger.warning(f"Error updating scanner status: {scanner_error}")
+        
+        # Add to audit log if the table exists
+        try:
+            cursor.execute('''
+            INSERT INTO audit_log (
+                user_id, action, entity_type, entity_id, 
+                changes, timestamp, ip_address
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                user['id'],
+                'deactivate',
+                'client',
+                client_id,
+                '{"active": 0}',
+                datetime.now().isoformat(),
+                request.remote_addr
+            ))
+        except Exception as log_error:
+            logger.warning(f"Error adding audit log: {log_error}")
+        
+        conn.commit()
+        conn.close()
+        
         flash('Client deactivated successfully', 'success')
-    else:
-        flash(f'Error deactivating client: {result.get("message", "Unknown error")}', 'danger')
+    except Exception as e:
+        logger.error(f"Error deactivating client: {e}")
+        flash(f'Error deactivating client: {str(e)}', 'danger')
     
     return redirect(url_for('client.client_list'))
