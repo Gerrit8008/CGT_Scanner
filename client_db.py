@@ -452,6 +452,351 @@ def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=N
         }
 
 @with_transaction
+def get_client_statistics(conn, cursor, client_id):
+    """Get comprehensive statistics for a client"""
+    try:
+        stats = {}
+        
+        # Get scanner count
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM deployed_scanners
+            WHERE client_id = ? AND deploy_status = 'deployed'
+        """, (client_id,))
+        stats['scanners_count'] = cursor.fetchone()['count']
+        
+        # Get total scans
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM scan_history
+            WHERE client_id = ?
+        """, (client_id,))
+        stats['total_scans'] = cursor.fetchone()['count']
+        
+        # Get average security score (this would need to be implemented based on your scan storage)
+        # For now, return a placeholder
+        stats['avg_security_score'] = None
+        
+        # Get reports count (same as total scans for now)
+        stats['reports_count'] = stats['total_scans']
+        
+        # Get recent scans
+        cursor.execute("""
+            SELECT s.*, ds.subdomain as scanner_name
+            FROM scan_history s
+            LEFT JOIN deployed_scanners ds ON s.client_id = ds.client_id
+            WHERE s.client_id = ?
+            ORDER BY s.timestamp DESC
+            LIMIT 5
+        """, (client_id,))
+        stats['recent_scans'] = [dict(row) for row in cursor.fetchall()]
+        
+        return stats
+    except Exception as e:
+        logging.error(f"Error getting client statistics: {e}")
+        return {
+            'scanners_count': 0,
+            'total_scans': 0,
+            'avg_security_score': None,
+            'reports_count': 0,
+            'recent_scans': []
+        }
+
+@with_transaction
+def get_recent_activities(conn, cursor, client_id, limit=10):
+    """Get recent activities for a client"""
+    try:
+        activities = []
+        
+        # Get recent scans
+        cursor.execute("""
+            SELECT timestamp, target, scan_type
+            FROM scan_history
+            WHERE client_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (client_id, limit))
+        
+        for row in cursor.fetchall():
+            activities.append({
+                'timestamp': row['timestamp'],
+                'description': f"Scanned {row['target']}",
+                'icon': 'bi-search',
+                'type': 'scan'
+            })
+        
+        # Get recent client updates from audit log
+        cursor.execute("""
+            SELECT timestamp, action, changes
+            FROM audit_log
+            WHERE entity_type = 'client' AND entity_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (client_id, limit))
+        
+        for row in cursor.fetchall():
+            activities.append({
+                'timestamp': row['timestamp'],
+                'description': f"Client {row['action']}",
+                'icon': 'bi-gear',
+                'type': 'update'
+            })
+        
+        # Sort all activities by timestamp
+        activities.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        return activities[:limit]
+    except Exception as e:
+        logging.error(f"Error getting recent activities: {e}")
+        return []
+
+@with_transaction
+def get_available_scanners_for_client(conn, cursor, client_id):
+    """Get all available scanners for a client"""
+    try:
+        cursor.execute("""
+            SELECT ds.*, c.business_name, c.scanner_name
+            FROM deployed_scanners ds
+            JOIN clients c ON ds.client_id = c.id
+            WHERE ds.client_id = ?
+            ORDER BY ds.id DESC
+        """, (client_id,))
+        
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logging.error(f"Error getting available scanners: {e}")
+        return []
+
+@with_transaction
+def get_client_dashboard_data(conn, cursor, client_id):
+    """Get comprehensive dashboard data for a client"""
+    try:
+        # Get client info
+        client = get_client_by_id(conn, cursor, client_id)
+        if not client:
+            return None
+        
+        # Get statistics
+        stats = get_client_statistics(conn, cursor, client_id)
+        
+        # Get scanners
+        scanners_result = get_deployed_scanners_by_client_id(conn, cursor, client_id)
+        scanners = scanners_result.get('scanners', [])
+        
+        # Get scan history
+        scan_history = get_scan_history_by_client_id(conn, cursor, client_id, limit=5)
+        
+        # Get recent activities
+        recent_activities = get_recent_activities(conn, cursor, client_id, limit=10)
+        
+        return {
+            'client': client,
+            'stats': stats,
+            'scanners': scanners,
+            'scan_history': scan_history,
+            'recent_activities': recent_activities
+        }
+    except Exception as e:
+        logging.error(f"Error getting client dashboard data: {e}")
+        return None
+
+@with_transaction
+def format_scan_results_for_client(conn, cursor, scan_data):
+    """Format scan results for client-friendly display"""
+    try:
+        if not scan_data:
+            return None
+        
+        # Add client-friendly formatting
+        formatted_scan = scan_data.copy()
+        
+        # Format risk levels
+        if 'risk_assessment' in formatted_scan:
+            risk_level = formatted_scan['risk_assessment'].get('risk_level', 'Unknown')
+            if risk_level.lower() == 'critical':
+                formatted_scan['risk_color'] = 'danger'
+            elif risk_level.lower() == 'high':
+                formatted_scan['risk_color'] = 'warning'
+            elif risk_level.lower() == 'medium':
+                formatted_scan['risk_color'] = 'info'
+            else:
+                formatted_scan['risk_color'] = 'success'
+        
+        # Format dates for display
+        if 'timestamp' in formatted_scan:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(formatted_scan['timestamp'])
+                formatted_scan['formatted_date'] = dt.strftime('%B %d, %Y at %I:%M %p')
+            except:
+                pass
+        
+        # Add summary statistics
+        if 'risk_assessment' in formatted_scan:
+            risk_assessment = formatted_scan['risk_assessment']
+            formatted_scan['total_issues'] = (
+                risk_assessment.get('critical_issues', 0) +
+                risk_assessment.get('high_issues', 0) +
+                risk_assessment.get('medium_issues', 0) +
+                risk_assessment.get('low_issues', 0)
+            )
+        
+        return formatted_scan
+    except Exception as e:
+        logging.error(f"Error formatting scan results: {e}")
+        return scan_data
+
+# Also add these missing functions with proper error handling
+
+@with_transaction
+def get_scan_history_by_client_id(conn, cursor, client_id, limit=None):
+    """Get scan history for a client with proper error handling"""
+    try:
+        query = """
+        SELECT sh.*, ds.subdomain as scanner_name
+        FROM scan_history sh
+        LEFT JOIN deployed_scanners ds ON sh.client_id = ds.client_id
+        WHERE sh.client_id = ?
+        ORDER BY sh.timestamp DESC
+        """
+        
+        params = [client_id]
+        
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+        
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logging.error(f"Error getting scan history: {e}")
+        return []
+
+@with_transaction
+def update_scanner_config(conn, cursor, scanner_id, scanner_data, user_id):
+    """Update scanner configuration with proper validation"""
+    try:
+        # Get scanner details
+        cursor.execute('SELECT client_id FROM deployed_scanners WHERE id = ?', (scanner_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            return {"status": "error", "message": "Scanner not found"}
+        
+        client_id = row['client_id']
+        
+        # Update deployed_scanners table
+        scanner_fields = []
+        scanner_values = []
+        
+        if 'subdomain' in scanner_data:
+            # Check if subdomain is unique
+            cursor.execute("""
+                SELECT id FROM deployed_scanners 
+                WHERE subdomain = ? AND id != ?
+            """, (scanner_data['subdomain'], scanner_id))
+            
+            if cursor.fetchone():
+                return {"status": "error", "message": "Subdomain already in use"}
+            
+            scanner_fields.append("subdomain = ?")
+            scanner_values.append(scanner_data['subdomain'])
+        
+        # Update last_updated
+        scanner_fields.append("last_updated = ?")
+        scanner_values.append(datetime.now().isoformat())
+        
+        # Execute scanner update
+        if scanner_fields:
+            query = f"UPDATE deployed_scanners SET {', '.join(scanner_fields)} WHERE id = ?"
+            scanner_values.append(scanner_id)
+            cursor.execute(query, scanner_values)
+        
+        # Update client table
+        client_fields = []
+        client_values = []
+        
+        if 'scanner_name' in scanner_data:
+            client_fields.append("scanner_name = ?")
+            client_values.append(scanner_data['scanner_name'])
+        
+        if 'business_domain' in scanner_data:
+            client_fields.append("business_domain = ?")
+            client_values.append(scanner_data['business_domain'])
+        
+        if 'contact_email' in scanner_data:
+            client_fields.append("contact_email = ?")
+            client_values.append(scanner_data['contact_email'])
+        
+        if 'contact_phone' in scanner_data:
+            client_fields.append("contact_phone = ?")
+            client_values.append(scanner_data['contact_phone'])
+        
+        # Update client table
+        if client_fields:
+            client_fields.append("updated_at = ?")
+            client_values.append(datetime.now().isoformat())
+            client_fields.append("updated_by = ?")
+            client_values.append(user_id)
+            
+            query = f"UPDATE clients SET {', '.join(client_fields)} WHERE id = ?"
+            client_values.append(client_id)
+            cursor.execute(query, client_values)
+        
+        # Update customizations table
+        custom_fields = []
+        custom_values = []
+        
+        custom_mapping = {
+            'primary_color': 'primary_color',
+            'secondary_color': 'secondary_color',
+            'logo_path': 'logo_path',
+            'favicon_path': 'favicon_path',
+            'email_subject': 'email_subject',
+            'email_intro': 'email_intro'
+        }
+        
+        for key, db_field in custom_mapping.items():
+            if key in scanner_data:
+                custom_fields.append(f"{db_field} = ?")
+                custom_values.append(scanner_data[key])
+        
+        # Handle default_scans
+        if 'default_scans' in scanner_data:
+            custom_fields.append("default_scans = ?")
+            custom_values.append(json.dumps(scanner_data['default_scans']))
+        
+        # Update customizations
+        if custom_fields:
+            custom_fields.append("last_updated = ?")
+            custom_values.append(datetime.now().isoformat())
+            custom_fields.append("updated_by = ?")
+            custom_values.append(user_id)
+            
+            # Check if customization exists
+            cursor.execute('SELECT id FROM customizations WHERE client_id = ?', (client_id,))
+            if cursor.fetchone():
+                # Update existing
+                query = f"UPDATE customizations SET {', '.join(custom_fields)} WHERE client_id = ?"
+                custom_values.append(client_id)
+                cursor.execute(query, custom_values)
+            else:
+                # Insert new
+                fields = ['client_id'] + [field.split(' = ')[0] for field in custom_fields]
+                values = [client_id] + custom_values
+                placeholders = ', '.join(['?'] * len(fields))
+                query = f"INSERT INTO customizations ({', '.join(fields)}) VALUES ({placeholders})"
+                cursor.execute(query, values)
+        
+        # Log the update
+        log_action(conn, cursor, user_id, 'update', 'scanner', scanner_id, scanner_data)
+        
+        return {"status": "success", "scanner_id": scanner_id}
+    except Exception as e:
+        logging.error(f"Error updating scanner config: {e}")
+        return {"status": "error", "message": str(e)}
+
+@with_transaction
 def get_dashboard_summary(conn, cursor=None):
     """
     Get dashboard summary statistics
