@@ -452,6 +452,68 @@ def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=N
         }
 
 @with_transaction
+def deactivate_client(conn, cursor, client_id, user_id=None):
+    """
+    Deactivate a client (soft delete)
+    
+    Args:
+        conn: Database connection
+        cursor: Database cursor
+        client_id (int): ID of the client to deactivate
+        user_id (int, optional): ID of the user performing the action
+        
+    Returns:
+        dict: Status result
+    """
+    try:
+        # Check if client exists
+        cursor.execute('SELECT id FROM clients WHERE id = ?', (client_id,))
+        if not cursor.fetchone():
+            return {"status": "error", "message": "Client not found"}
+        
+        # Set client as inactive
+        cursor.execute('''
+        UPDATE clients 
+        SET active = 0, 
+            updated_at = ?, 
+            updated_by = ?
+        WHERE id = ?
+        ''', (datetime.now().isoformat(), user_id, client_id))
+        
+        # Also deactivate any deployed scanners
+        cursor.execute('''
+        UPDATE deployed_scanners
+        SET deploy_status = 'inactive',
+            last_updated = ?
+        WHERE client_id = ?
+        ''', (datetime.now().isoformat(), client_id))
+        
+        # Log the deactivation
+        if user_id:
+            try:
+                cursor.execute('''
+                INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    user_id,
+                    'deactivate',
+                    'client',
+                    client_id,
+                    json.dumps({"active": 0}),
+                    datetime.now().isoformat()
+                ))
+            except Exception as log_error:
+                logging.warning(f"Could not add audit log: {str(log_error)}")
+        
+        logging.info(f"Client {client_id} deactivated by user {user_id}")
+        
+        return {"status": "success", "message": "Client deactivated successfully"}
+        
+    except Exception as e:
+        logging.error(f"Error deactivating client: {e}")
+        raise  # Re-raise to let transaction wrapper handle it
+
+@with_transaction
 def get_dashboard_summary(cursor=None):
     """
     Get dashboard summary statistics
