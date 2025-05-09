@@ -207,7 +207,7 @@ def with_transaction(func):
             conn.close()
     return wrapper
 
-def get_client_by_user_id(user_id):
+def get_client_by_user_id(conn, user_id):
     """Wrapper function for get_client_by_user_id"""
     try:
         # Create a new connection for this operation
