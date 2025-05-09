@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan Reports - Scanner Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        .sidebar {
+            background-color: #2c3e50;
+            color: white;
+            min-height: 100vh;
+            padding-top: 2rem;
+        }
+        
+        .sidebar-link {
+            color: rgba(255,255,255,0.8);
+            padding: 0.75rem 1rem;
+            border-radius: 5px;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-link:hover, .sidebar-link.active {
+            background-color: rgba(255,255,255,0.1);
+            color: white;
+        }
+        
+        .sidebar-link i {
+            margin-right: 0.75rem;
+            width: 24px;
+            text-align: center;
+        }
+        
+        .main-content {
+            padding: 2rem;
+        }
+        
+        .report-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .report-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .risk-badge {
+            padding: 0.35em 0.65em;
+            border-radius: 0.25rem;
+            font-size: 0.75em;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        
+        .risk-critical {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .risk-high {
+            background-color: #fd7e14;
+            color: white;
+        }
+        
+        .risk-medium {
+            background-color: #ffc107;
+            color: #000;
+        }
+        
+        .risk-low {
+            background-color: #198754;
+            color: white;
+        }
+        
+        .report-stats {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .report-stat {
+            text-align: center;
+        }
+        
+        .report-stat-value {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        
+        .date-input {
+            max-width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 p-0 sidebar">
+                <div class="text-center mb-4">
+                    <h4>Scanner Platform</h4>
+                    <p class="mb-0 small">Client Portal</p>
+                </div>
+                
+                <div class="px-3">
+                    <a href="/client/dashboard" class="sidebar-link">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                    <a href="/client/scanners" class="sidebar-link">
+                        <i class="bi bi-shield-check"></i> My Scanners
+                    </a>
+                    <a href="/client/reports" class="sidebar-link active">
+                        <i class="bi bi-file-earmark-text"></i> Scan Reports
+                    </a>
+                    <a href="/client/settings" class="sidebar-link">
+                        <i class="bi bi-gear"></i> Settings
+                    </a>
+                    
+                    <hr class="my-4">
+                    
+                    <a href="{{ url_for('auth.logout') }}" class="sidebar-link text-danger">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10 ms-auto main-content">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2>Scan Reports</h2>
+                        <p class="text-muted">View and download your security scan reports</p>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#runScanModal">
+                            <i class="bi bi-play-circle me-2"></i>Run New Scan
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <!-- Filter Section -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <form method="get" class="row g-3">
+                            <div class="col-md-4">
+                                <label for="scanner" class="form-label">Scanner</label>
+                                <select class="form-select" id="scanner" name="scanner">
+                                    <option value="">All Scanners</option>
+                                    {% for scanner in scanners %}
+                                        <option value="{{ scanner.id }}" {{ 'selected' if filters.get('scanner_id') == scanner.id }}>
+                                            {{ scanner.scanner_name }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="date_from" class="form-label">Date From</label>
+                                <input type="date" class="form-control date-input" id="date_from" name="date_from" 
+                                       value="{{ filters.get('date_from', '') }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="date_to" class="form-label">Date To</label>
+                                <input type="date" class="form-control date-input" id="date_to" name="date_to" 
+                                       value="{{ filters.get('date_to', '') }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">&nbsp;</label>
+                                <div>
+                                    <button type="submit" class="btn btn-primary w-100">
+                                        <i class="bi bi-funnel me-1"></i>Filter
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- Reports List -->
+                {% if scans %}
+                    <div class="row">
+                        {% for scan in scans %}
+                            <div class="col-12 mb-3">
+                                <div class="card report-card" onclick="viewReport('{{ scan.scan_id }}')">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <h5 class="card-title">
+                                                    {{ scan.target or 'Unknown Target' }}
+                                                    <span class="ms-2 risk-badge {% if scan.risk_level == 'Critical' %}risk-critical{% elif scan.risk_level == 'High' %}risk-high{% elif scan.risk_level == 'Medium' %}risk-medium{% else %}risk-low{% endif %}">
+                                                        {{ scan.risk_level|default('N/A') }}
+                                                    </span>
+                                                </h5>
+                                                <div class="text-muted small">
+                                                    <i class="bi bi-clock me-1"></i>
+                                                    {{ scan.timestamp|default('Unknown date') }}
+                                                    <span class="ms-3">
+                                                        <i class="bi bi-shield-check me-1"></i>
+                                                        Scanner: {{ scan.scanner_name|default('Unknown') }}
+                                                    </span>
+                                                    <span class="ms-3">
+                                                        <i class="bi bi-flag me-1"></i>
+                                                        Scan ID: {{ scan.scan_id }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div class="text-end">
+                                                <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); downloadReport('{{ scan.scan_id }}')">
+                                                    <i class="bi bi-download me-1"></i>Download
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); emailReport('{{ scan.scan_id }}')">
+                                                    <i class="bi bi-envelope me-1"></i>Email
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        {% if scan.risk_assessment %}
+                                            <div class="report-stats mt-3 pt-3 border-top">
+                                                <div class="report-stat">
+                                                    <div class="report-stat-value">{{ scan.risk_assessment.overall_score|default('N/A') }}%</div>
+                                                    <div class="text-muted small">Security Score</div>
+                                                </div>
+                                                <div class="report-stat">
+                                                    <div class="report-stat-value">{{ scan.risk_assessment.critical_issues|default(0) }}</div>
+                                                    <div class="text-muted small">Critical Issues</div>
+                                                </div>
+                                                <div class="report-stat">
+                                                    <div class="report-stat-value">{{ scan.risk_assessment.high_issues|default(0) }}</div>
+                                                    <div class="text-muted small">High Issues</div>
+                                                </div>
+                                                <div class="report-stat">
+                                                    <div class="report-stat-value">{{ scan.recommendations|length|default(0) }}</div>
+                                                    <div class="text-muted small">Recommendations</div>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- Pagination -->
+                    {% if pagination.total_pages > 1 %}
+                        <nav aria-label="Page navigation" class="mt-4">
+                            <ul class="pagination justify-content-center">
+                                {% if pagination.page > 1 %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('client.reports', page=pagination.page-1, **filters) }}">Previous</a>
+                                    </li>
+                                {% endif %}
+                                
+                                {% for page_num in range(1, pagination.total_pages + 1) %}
+                                    {% if page_num == pagination.page %}
+                                        <li class="page-item active">
+                                            <span class="page-link">{{ page_num }}</span>
+                                        </li>
+                                    {% elif page_num == 1 or page_num == pagination.total_pages or (page_num >= pagination.page - 2 and page_num <= pagination.page + 2) %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="{{ url_for('client.reports', page=page_num, **filters) }}">{{ page_num }}</a>
+                                        </li>
+                                    {% elif page_num == pagination.page - 3 or page_num == pagination.page + 3 %}
+                                        <li class="page-item disabled">
+                                            <span class="page-link">...</span>
+                                        </li>
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                {% if pagination.page < pagination.total_pages %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('client.reports', page=pagination.page+1, **filters) }}">Next</a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                    {% endif %}
+                {% else %}
+                    <!-- No Reports State -->
+                    <div class="text-center py-5">
+                        <i class="bi bi-file-earmark-text display-1 text-muted"></i>
+                        <h3 class="mt-3">No scan reports found</h3>
+                        <p class="text-muted">No scans have been performed yet. Start your first security scan.</p>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#runScanModal">
+                            <i class="bi bi-play-circle me-2"></i>Run Your First Scan
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Run Scan Modal -->
+    <div class="modal fade" id="runScanModal" tabindex="-1" aria-labelledby="runScanModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="runScanModalLabel">Run New Scan</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="runScanForm">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="scanTarget" class="form-label">Target Domain/URL</label>
+                            <input type="text" class="form-control" id="scanTarget" name="target" placeholder="example.com" required>
+                            <div class="form-text">Enter the domain or URL you want to scan</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="scanScanner" class="form-label">Scanner</label>
+                            <select class="form-select" id="scanScanner" name="scanner_id" required>
+                                <option value="">Select a scanner</option>
+                                {% for scanner in scanners %}
+                                    {% if scanner.deploy_status == 'deployed' %}
+                                        <option value="{{ scanner.id }}">{{ scanner.scanner_name }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Scan Types</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="network" id="scanNetwork" name="scan_types" checked>
+                                <label class="form-check-label" for="scanNetwork">Network Security</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="web" id="scanWeb" name="scan_types" checked>
+                                <label class="form-check-label" for="scanWeb">Web Application</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="email" id="scanEmail" name="scan_types" checked>
+                                <label class="form-check-label" for="scanEmail">Email Security</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="ssl" id="scanSSL" name="scan_types" checked>
+                                <label class="form-check-label" for="scanSSL">SSL/TLS Analysis</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-play-circle me-2"></i>Run Scan
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // View report
+        function viewReport(scanId) {
+            window.location.href = `/client/reports/${scanId}`;
+        }
+        
+        // Download report
+        function downloadReport(scanId) {
+            window.open(`/api/download_report/${scanId}`, '_blank');
+        }
+        
+        // Email report
+        function emailReport(scanId) {
+            // Create modal for email input
+            const email = prompt('Enter email address to send the report:');
+            if (email) {
+                fetch('/api/email_report', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `scan_id=${scanId}&email=${encodeURIComponent(email)}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('Report sent successfully!');
+                    } else {
+                        alert('Failed to send report. Please try again.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred. Please try again.');
+                });
+            }
+        }
+        
+        // Run scan form submission
+        document.getElementById('runScanForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const submitButton = this.querySelector('button[type="submit"]');
+            const originalText = submitButton.innerHTML;
+            
+            // Show loading state
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running Scan...';
+            
+            fetch('/api/run_scan', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Hide modal
+                    bootstrap.Modal.getInstance(document.getElementById('runScanModal')).hide();
+                    // Redirect to scan results
+                    window.location.href = `/client/reports/${data.scan_id}`;
+                } else {
+                    alert(data.message || 'Failed to run scan. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            })
+            .finally(() => {
+                // Reset button state
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalText;
+            });
+        });
+    </script>
+</body>
+</html>
