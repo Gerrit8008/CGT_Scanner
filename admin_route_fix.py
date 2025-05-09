@@ -746,7 +746,8 @@ def create_basic_templates():
         </div>
     </div>
 </body>
-</html>    
+</html>
+        """,
     <!-- Scanner Options Modal -->
     <div class="modal fade" id="scannerOptionsModal" tabindex="-1" aria-labelledby="scannerOptionsModalLabel" aria-hidden="true">
         <div class="modal-dialog">
