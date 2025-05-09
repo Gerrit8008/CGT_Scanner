@@ -93,6 +93,26 @@ from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_
 # Register blueprints after initializing the app
 def create_app():
     """Create and configure the Flask application"""
+
+def integrate_admin_fix(app):
+    """
+    Integrate the admin dashboard fix into your Flask application.
+    
+    This function adds a web-based route to fix the admin dashboard
+    issues without requiring server-side file edits.
+    
+    Args:
+        app: Your Flask application instance
+        
+    Returns:
+        The modified Flask application
+    """
+    from admin_web_fix import add_web_fix_route
+    
+    # Add the web-based fix route
+    app = add_web_fix_route(app)
+    
+    return app
     
     # Specify multiple template folders
     app = Flask(__name__, template_folder='templates')
@@ -779,6 +799,8 @@ def customize_scanner():
 #def admin_dashboard():
     #"""Render the admin dashboard"""
     #return render_template('admin/admin-dashboard.html')
+
+
 
 # Log registered routes
 @app.before_first_request
