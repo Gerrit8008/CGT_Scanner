@@ -60,7 +60,7 @@ def fix_dashboard_function():
             f.write(content)
         
         # Fixed dashboard function
-        fixed_function = """@admin_bp.route('/dashboard')
+        fixed_function = '''@admin_bp.route('/dashboard')
 @admin_required
 def dashboard(user):
     """Admin dashboard with summary statistics"""
@@ -100,7 +100,8 @@ def dashboard(user):
         return render_template(
             'admin/error.html',
             error=f"Error loading dashboard: {str(e)}"
-        )"""
+        )
+'''
         
         # Check if dashboard function exists
         dashboard_pattern = r'@admin_bp\.route\([\'"]\/dashboard[\'"]\)[\s\S]*?def dashboard\([^)]*\):[\s\S]*?(?=@|\Z)'
@@ -136,7 +137,7 @@ def add_dashboard_summary_function():
             f.write(content)
         
         # Function to add
-        function_content = """
+        function_content = '''
 def get_dashboard_summary(cursor=None):
     """Get summary statistics for the admin dashboard."""
     try:
@@ -203,7 +204,7 @@ def get_dashboard_summary(cursor=None):
             'active_scans': 0,
             'monthly_revenue': 0
         }
-"""
+'''
         
         # Check if function already exists
         if 'def get_dashboard_summary' in content:
@@ -235,7 +236,7 @@ def fix_list_clients_function():
             content = f.read()
         
         # Function to add
-        function_content = """
+        function_content = '''
 def list_clients(cursor=None, page=1, per_page=10, filters=None):
     """List clients with pagination and filtering."""
     try:
@@ -325,7 +326,7 @@ def list_clients(cursor=None, page=1, per_page=10, filters=None):
                 'total_pages': 1
             }
         }
-"""
+'''
         
         # Check if function already exists
         if 'def list_clients' in content:
