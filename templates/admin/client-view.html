@@ -1,0 +1,53 @@
+## templates/admin/client-view.html
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Include standard head content similar to other admin pages -->
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Include sidebar similar to other admin pages -->
+            
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10 ms-auto main-content">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2>Client Details: {{ client.business_name }}</h2>
+                    <div>
+                        <a href="{{ url_for('client.client_edit', client_id=client.id) }}" class="btn btn-primary">
+                            <i class="bi bi-pencil me-2"></i> Edit Client
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Include flash messages -->
+                
+                <!-- Client Details -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body">
+                        <!-- Client information -->
+                    </div>
+                </div>
+                
+                <!-- Scanner Details -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body">
+                        <!-- Scanner information -->
+                    </div>
+                </div>
+                
+                <!-- Subscription Details -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <!-- Subscription information -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Include standard JavaScript files -->
+</body>
+</html>
+```
