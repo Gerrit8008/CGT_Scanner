@@ -132,6 +132,7 @@ def init_database():
     if not os.path.exists(db_dir):
         os.makedirs(db_dir)
     
+    # Connect to the database
     conn = sqlite3.connect(CLIENT_DB_PATH)
     cursor = conn.cursor()
     
@@ -291,6 +292,7 @@ def init_database():
     
 # Initialize app
 app, limiter = create_app()
+init_database()
 # Apply admin configuration
 app = configure_admin(app)
 register_debug_middleware(app)
@@ -301,7 +303,7 @@ app.register_blueprint(api_bp)
 app.register_blueprint(scanner_bp)
 app.register_blueprint(client_bp) 
 app.register_blueprint(emergency_bp)
-init_database()
+
 
 # Initialize Flask-Login
 login_manager = LoginManager()
