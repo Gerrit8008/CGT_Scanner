@@ -74,6 +74,10 @@ from scan import (
     get_industry_benchmarks,
     calculate_industry_percentile
 )
+
+def add_fix_page(app):
+    """Simple replacement for the original function"""
+    return app
     
 # Define upload folder for file uploads
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
