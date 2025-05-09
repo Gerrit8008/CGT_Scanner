@@ -3088,7 +3088,162 @@ def check_route_conflicts():
         
 # Call this function after all blueprints are registered
 check_route_conflicts()
+
+@app.route('/run_dashboard_fix')
+def run_dashboard_fix():
+    """Web route to run the dashboard fix script"""
+    try:
+        # Import functions from dashboard_fix.py
+        from dashboard_fix import apply_dashboard_fix, add_get_dashboard_summary, fix_list_clients, create_missing_tables
         
+        # Define file paths
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        admin_py = os.path.join(script_dir, 'admin.py')
+        client_db_py = os.path.join(script_dir, 'client_db.py')
+        
+        # Apply fixes
+        results = []
+        results.append(f"Starting dashboard fixes at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Fix admin.py dashboard function
+        if os.path.exists(admin_py):
+            dashboard_fix_result = apply_dashboard_fix(admin_py)
+            results.append(f"Dashboard function fix: {'Success' if dashboard_fix_result else 'Failed'}")
+        else:
+            results.append(f"Error: admin.py not found at {admin_py}")
+            
+        # Fix client_db.py functions
+        if os.path.exists(client_db_py):
+            # Add or update get_dashboard_summary function
+            summary_fix_result = add_get_dashboard_summary(client_db_py)
+            results.append(f"get_dashboard_summary function fix: {'Success' if summary_fix_result else 'Failed'}")
+            
+            # Fix list_clients function
+            clients_fix_result = fix_list_clients(client_db_py)
+            results.append(f"list_clients function fix: {'Success' if clients_fix_result else 'Failed'}")
+        else:
+            results.append(f"Error: client_db.py not found at {client_db_py}")
+            
+        # Create missing tables
+        tables_fix_result = create_missing_tables()
+        results.append(f"Missing tables creation: {'Success' if tables_fix_result else 'Failed'}")
+        
+        # Return the results
+        return f"""
+        <html>
+            <head>
+                <title>Dashboard Fix Results</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .success {{ color: green; }}
+                    .error {{ color: red; }}
+                    .container {{ max-width: 800px; margin: 0 auto; }}
+                    pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Dashboard Fix Results</h1>
+                    <pre>{'\\n'.join(results)}</pre>
+                    <p><a href="/admin/dashboard">Try accessing the dashboard</a></p>
+                </div>
+            </body>
+        </html>
+        """
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        return f"""
+        <html>
+            <head>
+                <title>Dashboard Fix Error</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .error {{ color: red; }}
+                    .container {{ max-width: 800px; margin: 0 auto; }}
+                    pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1 class="error">Error Running Dashboard Fix</h1>
+                    <p class="error">{str(e)}</p>
+                    <h2>Traceback:</h2>
+                    <pre>{error_traceback}</pre>
+                </div>
+            </body>
+        </html>
+        """
+
+@app.route('/run_emergency_admin')
+def run_emergency_admin():
+    """Web route to create an emergency admin user"""
+    try:
+        # Import function from hotfix.py
+        from hotfix import create_emergency_admin
+        
+        # Create emergency admin
+        success = create_emergency_admin()
+        
+        # Get admin details if successful
+        admin_details = """
+        <div class="success">
+            <p>Emergency admin created successfully!</p>
+            <p>Username: emergency_admin</p>
+            <p>Password: admin123</p>
+        </div>
+        <p><a href="/admin/dashboard">Go to Admin Dashboard</a></p>
+        """ if success else """
+        <div class="error">
+            <p>Failed to create emergency admin.</p>
+        </div>
+        """
+        
+        # Return the results
+        return f"""
+        <html>
+            <head>
+                <title>Emergency Admin Creation</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .success {{ color: green; padding: 10px; background-color: #e6ffe6; border-radius: 5px; }}
+                    .error {{ color: red; padding: 10px; background-color: #ffe6e6; border-radius: 5px; }}
+                    .container {{ max-width: 800px; margin: 0 auto; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Emergency Admin Creation</h1>
+                    {admin_details}
+                </div>
+            </body>
+        </html>
+        """
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        return f"""
+        <html>
+            <head>
+                <title>Emergency Admin Error</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .error {{ color: red; }}
+                    .container {{ max-width: 800px; margin: 0 auto; }}
+                    pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1 class="error">Error Creating Emergency Admin</h1>
+                    <p class="error">{str(e)}</p>
+                    <h2>Traceback:</h2>
+                    <pre>{error_traceback}</pre>
+                </div>
+            </body>
+        </html>
+        """
+
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
 if __name__ == '__main__':
