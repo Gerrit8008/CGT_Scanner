@@ -42,7 +42,6 @@ from admin_fix_integration import apply_admin_fixes
 from admin_route_fix import apply_admin_route_fixes
 from route_fix import fix_admin_routes
 from admin_fix_web import add_admin_fix_route
-from add_admin_fix import integrate_admin_fix
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -97,63 +96,7 @@ from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_
 # Register blueprints after initializing the app
 def create_app():
     """Create and configure the Flask application"""
-
-def integrate_admin_fix(app):
-    """
-    Integrate the admin dashboard fix into your Flask application.
     
-    This function adds a web-based route to fix the admin dashboard
-    issues without requiring server-side file edits.
-    
-    Args:
-        app: Your Flask application instance
-        
-    Returns:
-        The modified Flask application
-    """
-    from admin_web_fix import add_web_fix_route
-    
-    # Add the web-based fix route
-    app = add_web_fix_route(app)
-    
-    return app
-    
-    # Specify multiple template folders
-    app = Flask(__name__, template_folder='templates')
-
-    register_auth_hotfix(app)
-    app = integrate_admin_fix(app)
-    
-    config = get_config()
-    config.init_app(app)
-    
-    # Use a strong secret key 
-    app.secret_key = os.environ.get('SECRET_KEY', 'your_strong_secret_key_here')
-    app.config['SESSION_TYPE'] = 'filesystem'  # Store sessions in files
-    app.config['SESSION_PERMANENT'] = True  # Make sessions permanent
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)  # Sessions last 1 hour
-    
-    # Configure CORS
-    CORS(app, supports_credentials=True)
-    
-    # Initialize limiter
-    limiter = Limiter(
-        app=app,
-        key_func=get_remote_address,
-        default_limits=[f"{app.config.get('RATE_LIMIT_PER_DAY', 200)} per day", 
-                       f"{app.config.get('RATE_LIMIT_PER_HOUR', 50)} per hour"],
-        storage_uri="memory://"
-    )
-    logging.warning("Using in-memory storage for rate limiting. Not recommended for production.")
-    
-    # Initialize database
-    init_db()
-    init_client_db()  # Initialize client database
-    create_user("admin", "admin@example.com", "admin123", "admin")
-    fix_admin_routes(app)
-    
-    return app, limiter
-
 def init_database():
     """Initialize all database tables if they don't exist"""
     logging.info("Starting database initialization...")
@@ -346,7 +289,6 @@ app.register_blueprint(emergency_bp)
 
 apply_admin_fixes(app)
 add_admin_fix_route(app)
-app = add_fix_page(app)
 
 try:
     from register_routes import register_all_routes
