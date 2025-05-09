@@ -2227,10 +2227,28 @@ def init_db():
 # This version is designed to work with the @with_transaction decorator
 
 @with_transaction
-def init_client_db(conn, cursor):
-    """Initialize the database with required tables and indexes"""
+# Modify the init_client_db function in client_db.py to make cursor optional:
+
+def init_client_db(cursor=None):
+    """Initialize the client database with required tables
+    
+    Args:
+        cursor: Optional database cursor. If not provided, a new connection will be created.
+        
+    Returns:
+        Dict with status and message
+    """
+    close_conn = False
+    conn = None
+    
     try:
-        # Create users table if not exists
+        # If cursor wasn't provided, create a new connection and cursor
+        if cursor is None:
+            conn = sqlite3.connect(CLIENT_DB_PATH)
+            cursor = conn.cursor()
+            close_conn = True
+        
+        # Create users table
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2246,147 +2264,24 @@ def init_client_db(conn, cursor):
         )
         ''')
         
-        # Create sessions table if not exists
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            session_token TEXT UNIQUE NOT NULL,
-            created_at TEXT,
-            expires_at TEXT,
-            ip_address TEXT,
-            user_agent TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        ''')
+        # Create other tables...
+        # (your existing table creation code)
         
-        # Create clients table if not exists
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS clients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            business_name TEXT NOT NULL,
-            business_domain TEXT NOT NULL,
-            contact_email TEXT NOT NULL,
-            contact_phone TEXT,
-            scanner_name TEXT,
-            subscription_level TEXT DEFAULT 'basic',
-            subscription_status TEXT DEFAULT 'active',
-            subscription_start TEXT,
-            subscription_end TEXT,
-            api_key TEXT UNIQUE,
-            created_at TEXT,
-            created_by INTEGER,
-            updated_at TEXT,
-            updated_by INTEGER,
-            active INTEGER DEFAULT 1,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (created_by) REFERENCES users(id),
-            FOREIGN KEY (updated_by) REFERENCES users(id)
-        )
-        ''')
-        
-        # Create customizations table if not exists
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS customizations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_id INTEGER NOT NULL,
-            primary_color TEXT,
-            secondary_color TEXT,
-            logo_path TEXT,
-            favicon_path TEXT,
-            email_subject TEXT,
-            email_intro TEXT,
-            email_footer TEXT,
-            default_scans TEXT,  -- JSON array of default scan types
-            css_override TEXT,
-            html_override TEXT,
-            last_updated TEXT,
-            updated_by INTEGER,
-            FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-            FOREIGN KEY (updated_by) REFERENCES users(id)
-        )
-        ''')
-        
-        # Create deployed_scanners table if not exists
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS deployed_scanners (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_id INTEGER NOT NULL,
-            subdomain TEXT UNIQUE,
-            domain TEXT,
-            deploy_status TEXT,
-            deploy_date TEXT,
-            last_updated TEXT,
-            config_path TEXT,
-            template_version TEXT,
-            FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
-        )
-        ''')
-        
-        # Create scan_history table if not exists
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS scan_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_id INTEGER NOT NULL,
-            scan_id TEXT UNIQUE NOT NULL,
-            timestamp TEXT,
-            target TEXT,
-            scan_type TEXT,
-            status TEXT,
-            report_path TEXT,
-            FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
-        )
-        ''')
-        
-        # Create audit_log table if not exists
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            action TEXT NOT NULL,
-            entity_type TEXT NOT NULL,
-            entity_id INTEGER NOT NULL,
-            changes TEXT,
-            timestamp TEXT NOT NULL,
-            ip_address TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-        )
-        ''')
-        
-        # Create indices for better performance
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_clients_api_key ON clients(api_key)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token)')
-        
-        # Create admin user if it doesn't exist
-        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
-        admin = cursor.fetchone()
-        
-        if not admin:
-            # Create salt and hash password with better security
-            salt = secrets.token_hex(16)
-            password = 'admin123'  # Default password (should be changed immediately)
-            password_hash = hashlib.pbkdf2_hmac(
-                'sha256', 
-                password.encode(), 
-                salt.encode(), 
-                100000
-            ).hex()
+        # Commit changes if we created our own connection
+        if close_conn and conn:
+            conn.commit()
             
-            cursor.execute('''
-            INSERT INTO users (username, email, password_hash, salt, role, full_name, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', ('admin', 'admin@scannerplatform.com', password_hash, salt, 'admin', 'System Administrator', datetime.now().isoformat()))
-            
-            logging.info("Admin user created. Please change the default password.")
-            
-        return {"status": "success", "message": "Database initialized successfully"}
+        return {'status': 'success', 'message': 'Client database initialized successfully'}
+        
     except Exception as e:
-        logging.error(f"Database error during initialization: {e}")
-        raise
+        if close_conn and conn:
+            conn.rollback()
+        logging.error(f"Error initializing client database: {e}")
+        return {'status': 'error', 'message': str(e)}
+    finally:
+        # Close connection if we created it
+        if close_conn and conn:
+            conn.close()
         
 def ensure_full_name_column():
     """Ensure the full_name column exists in the users table"""
