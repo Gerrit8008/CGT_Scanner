@@ -37,6 +37,32 @@ def admin_required(f):
     decorated_function.__doc__ = f.__doc__
     return decorated_function
 
+@client_bp.route('/profile')
+@admin_required
+def profile(user):
+    """Client profile page"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get user's client if associated
+    client = None
+    if user and 'id' in user:
+        cursor.execute('''
+        SELECT * FROM clients 
+        WHERE user_id = ? AND active = 1
+        ''', (user['id'],))
+        client_row = cursor.fetchone()
+        if client_row:
+            client = dict(client_row)
+    
+    conn.close()
+    
+    return render_template(
+        'admin/client-profile.html',
+        user=user,
+        client=client
+    )
+
 @client_bp.route('/clients')
 @admin_required
 def client_list(user):
