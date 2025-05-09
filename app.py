@@ -43,6 +43,7 @@ from admin_route_fix import apply_admin_route_fixes
 from route_fix import fix_admin_routes
 from admin_fix_web import add_admin_fix_route
 from admin_fix_page import add_fix_page
+from add_admin_fix import integrate_admin_fix
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -118,6 +119,7 @@ def integrate_admin_fix(app):
     app = Flask(__name__, template_folder='templates')
 
     register_auth_hotfix(app)
+    app = integrate_admin_fix(app)
     
     config = get_config()
     config.init_app(app)
