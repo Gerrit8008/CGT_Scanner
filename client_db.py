@@ -1868,7 +1868,17 @@ def get_client_by_user_id(user_id):
     except Exception as e:
         logger.error(f"Error retrieving client by user ID: {e}")
         return None
-        
+
+def get_db_connection():
+    """Get a new database connection
+    
+    Returns:
+        sqlite3.Connection: Database connection with row factory enabled
+    """
+    conn = sqlite3.connect(CLIENT_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=None):
     """Get list of deployed scanners for a client with pagination and filtering"""
     try:
