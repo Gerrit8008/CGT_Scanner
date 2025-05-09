@@ -601,8 +601,6 @@ def create_basic_templates():
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
-</html>
-            """,
     <div class="container-fluid">
         <div class="row">
             <!-- Sidebar -->
@@ -747,7 +745,8 @@ def create_basic_templates():
             </div>
         </div>
     </div>
-    
+</body>
+</html>    
     <!-- Scanner Options Modal -->
     <div class="modal fade" id="scannerOptionsModal" tabindex="-1" aria-labelledby="scannerOptionsModalLabel" aria-hidden="true">
         <div class="modal-dialog">
