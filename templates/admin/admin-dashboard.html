@@ -17,29 +17,29 @@
                     <h4>Scanner Platform</h4>
                     <p class="mb-0 small">Admin Panel</p>
                 </div>
-                
+    
                 <div class="px-3">
-                    <a href="/admin/dashboard" class="sidebar-link active">
+                    <a href="{{ url_for('admin.dashboard') }}" class="sidebar-link active">
                         <i class="bi bi-speedometer2"></i> Dashboard
                     </a>
-                    <a href="/admin/clients" class="sidebar-link">
+                    <a href="{{ url_for('client.client_list') }}" class="sidebar-link">
                         <i class="bi bi-people"></i> Client Management
                     </a>
-                    <a href="/customize" class="sidebar-link">
+                    <a href="{{ url_for('customize_scanner') }}" class="sidebar-link">
                         <i class="bi bi-plus-circle"></i> Create Scanner
                     </a>
-                    <a href="/admin/subscriptions" class="sidebar-link">
+                    <a href="{{ url_for('subscription.subscription_list') }}" class="sidebar-link">
                         <i class="bi bi-credit-card"></i> Subscriptions
                     </a>
-                    <a href="/admin/reports" class="sidebar-link">
+                    <a href="{{ url_for('reports.reports_dashboard') }}" class="sidebar-link">
                         <i class="bi bi-file-earmark-text"></i> Reports
                     </a>
-                    <a href="/admin/settings" class="sidebar-link">
+                    <a href="{{ url_for('settings.settings_dashboard') }}" class="sidebar-link">
                         <i class="bi bi-gear"></i> Settings
                     </a>
-                    
+        
                     <hr class="my-4">
-                    
+        
                     <a href="{{ url_for('auth.logout') }}" class="sidebar-link text-danger">
                         <i class="bi bi-box-arrow-right"></i> Logout
                     </a>
