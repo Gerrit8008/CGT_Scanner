@@ -1,441 +1,506 @@
-import React, { useState, useEffect } from 'react';
-
-const ClientDashboard = () => {
-  const [user, setUser] = useState({
-    username: 'johndoe',
-    subscription_level: 'Pro',
-    subscription_status: 'Active'
-  });
-  
-  const [scannerStats, setScannerStats] = useState({
-    total_scanners: 3,
-    total_scans: 42,
-    active_scans: 5
-  });
-  
-  const [scanners, setScanners] = useState([
-    {
-      id: 1,
-      scanner_name: "Security Scanner Pro",
-      subdomain: "acme.yourscannerdomain.com",
-      deploy_status: "deployed",
-      deploy_date: "May 3, 2025",
-      created_at: "May 3, 2025"
-    },
-    {
-      id: 2,
-      scanner_name: "Enterprise Scanner",
-      subdomain: "global-innovations.yourscannerdomain.com",
-      deploy_status: "deployed",
-      deploy_date: "April 28, 2025",
-      created_at: "April 28, 2025"
-    },
-    {
-      id: 3,
-      scanner_name: "Stellar Security",
-      subdomain: "stellar.yourscannerdomain.com",
-      deploy_status: "pending",
-      deploy_date: "May 2, 2025",
-      created_at: "May 2, 2025"
-    }
-  ]);
-  
-  const [scanHistory, setScanHistory] = useState([
-    {
-      scan_id: 1,
-      timestamp: "May 5, 2025",
-      scanner_name: "Security Scanner Pro",
-      target: "acmecorp.com"
-    },
-    {
-      scan_id: 2,
-      timestamp: "May 3, 2025",
-      scanner_name: "Enterprise Scanner",
-      target: "globalinnovations.com"
-    },
-    {
-      scan_id: 3,
-      timestamp: "May 1, 2025",
-      scanner_name: "Security Scanner Pro",
-      target: "acmecorp.com/shop"
-    },
-    {
-      scan_id: 4,
-      timestamp: "April 29, 2025",
-      scanner_name: "Enterprise Scanner",
-      target: "app.globalinnovations.com"
-    },
-    {
-      scan_id: 5,
-      timestamp: "April 27, 2025",
-      scanner_name: "Security Scanner Pro",
-      target: "blog.acmecorp.com"
-    }
-  ]);
-  
-  const [showScannerOptionsModal, setShowScannerOptionsModal] = useState(false);
-  const [selectedScanner, setSelectedScanner] = useState(null);
-  
-  const [showRegenerateApiKeyModal, setShowRegenerateApiKeyModal] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [newApiKey, setNewApiKey] = useState("");
-  const [apiKeyRegenerated, setApiKeyRegenerated] = useState(false);
-  
-  useEffect(() => {
-    // Simulate fetching user data, scanner stats, scanners list, and scan history
-    // In a real application, these would be API calls
-  }, []);
-  
-  const handleScannerOptions = (scanner) => {
-    setSelectedScanner(scanner);
-    setShowScannerOptionsModal(true);
-  };
-  
-  const handleRegenerateApiKey = () => {
-    setShowScannerOptionsModal(false);
-    setShowRegenerateApiKeyModal(true);
-  };
-  
-  const confirmRegenerateApiKey = () => {
-    setIsRegenerating(true);
-    
-    // Simulate API call to regenerate key
-    setTimeout(() => {
-      setNewApiKey("bd95e8a7-31f2-4d8c-b9a3-7e42f8c91b6d");
-      setIsRegenerating(false);
-      setApiKeyRegenerated(true);
-    }, 1500);
-  };
-  
-  const copyToClipboard = (text, setTempState) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setTempState(true);
-      setTimeout(() => setTempState(false), 2000);
-    });
-  };
-  
-  const [copiedNewApiKey, setCopiedNewApiKey] = useState(false);
-
-  return (
-    <div className="container-fluid">
-      <div className="row">
-        {/* Sidebar */}
-        <div className="col-md-3 col-lg-2 p-0 sidebar">
-          <div className="text-center mb-4">
-            <h4>Scanner Platform</h4>
-            <p className="mb-0 small">Client Portal</p>
-          </div>
-          
-          <div className="px-3">
-            <a href="#" className="sidebar-link active">
-              <i className="bi bi-speedometer2"></i> Dashboard
-            </a>
-            <a href="#" className="sidebar-link">
-              <i className="bi bi-shield-check"></i> My Scanners
-            </a>
-            <a href="#" className="sidebar-link">
-              <i className="bi bi-file-earmark-text"></i> Scan Reports
-            </a>
-            <a href="#" className="sidebar-link">
-              <i className="bi bi-gear"></i> Settings
-            </a>
-            
-            <hr className="my-4" />
-            
-            <a href="#" className="sidebar-link text-danger">
-              <i className="bi bi-box-arrow-right"></i> Logout
-            </a>
-          </div>
-        </div>
+<!-- templates/client/client-dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Dashboard - Scanner Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        .sidebar {
+            background-color: #2c3e50;
+            color: white;
+            min-height: 100vh;
+            padding-top: 2rem;
+        }
         
-        {/* Main Content */}
-        <div className="col-md-9 col-lg-10 ms-auto main-content">
-          <div className="d-flex justify-content-between align-items-center mb-4">
-            <h2>Client Dashboard</h2>
-            <div>
-              <span className="badge bg-primary">Client</span>
-              <span className="ms-2">{user.username}</span>
-            </div>
-          </div>
-          
-          {/* Stats Overview */}
-          <div className="row g-4 mb-4">
-            <div className="col-md-4">
-              <div className="card stat-card border-0 shadow-sm">
-                <div className="card-body">
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="icon-circle me-3 bg-primary bg-opacity-10">
-                      <i className="bi bi-shield-check text-primary"></i>
-                    </div>
-                    <h6 className="mb-0">My Scanners</h6>
-                  </div>
-                  <div className="stat-value">{scannerStats.total_scanners}</div>
-                  <p className="text-muted mb-0">Total deployed scanners</p>
+        .sidebar-link {
+            color: rgba(255,255,255,0.8);
+            padding: 0.75rem 1rem;
+            border-radius: 5px;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-link:hover, .sidebar-link.active {
+            background-color: rgba(255,255,255,0.1);
+            color: white;
+        }
+        
+        .sidebar-link i {
+            margin-right: 0.75rem;
+            width: 24px;
+            text-align: center;
+        }
+        
+        .main-content {
+            padding: 2rem;
+        }
+        
+        .scanner-card {
+            transition: all 0.3s ease;
+            border-radius: 10px;
+            overflow: hidden;
+            height: 100%;
+        }
+        
+        .scanner-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card {
+            transition: all 0.3s ease;
+            border-radius: 10px;
+            overflow: hidden;
+            height: 100%;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+        }
+        
+        .status-badge {
+            padding: 0.35em 0.65em;
+            border-radius: 0.25rem;
+            font-size: 0.75em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .status-deployed {
+            background-color: #d1e7dd;
+            color: #0f5132;
+        }
+        
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-inactive {
+            background-color: #f8d7da;
+            color: #842029;
+        }
+        
+        .scanner-action {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            color: #6c757d;
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .scanner-action:hover {
+            background-color: rgba(0,0,0,0.05);
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 p-0 sidebar">
+                <div class="text-center mb-4">
+                    <h4>Scanner Platform</h4>
+                    <p class="mb-0 small">Client Portal</p>
                 </div>
-              </div>
+                
+                <div class="px-3">
+                    <a href="/client/dashboard" class="sidebar-link active">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                    <a href="/client/scanners" class="sidebar-link">
+                        <i class="bi bi-shield-check"></i> My Scanners
+                    </a>
+                    <a href="/client/reports" class="sidebar-link">
+                        <i class="bi bi-file-earmark-text"></i> Scan Reports
+                    </a>
+                    <a href="/client/settings" class="sidebar-link">
+                        <i class="bi bi-gear"></i> Settings
+                    </a>
+                    
+                    <hr class="my-4">
+                    
+                    <form method="post" action="{{ url_for('auth.logout') }}">
+                        <button type="submit" class="btn btn-link">Logout</button>
+                    </form>
+                </div>
             </div>
             
-            <div className="col-md-4">
-              <div className="card stat-card border-0 shadow-sm">
-                <div className="card-body">
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="icon-circle me-3 bg-success bg-opacity-10">
-                      <i className="bi bi-search text-success"></i>
-                    </div>
-                    <h6 className="mb-0">Total Scans</h6>
-                  </div>
-                  <div className="stat-value">{scannerStats.total_scans}</div>
-                  <p className="text-muted mb-0">Scans conducted to date</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="col-md-4">
-              <div className="card stat-card border-0 shadow-sm">
-                <div className="card-body">
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="icon-circle me-3 bg-warning bg-opacity-10">
-                      <i className="bi bi-calendar-check text-warning"></i>
-                    </div>
-                    <h6 className="mb-0">Subscription</h6>
-                  </div>
-                  <div className="d-flex align-items-center">
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10 ms-auto main-content">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2>Client Dashboard</h2>
                     <div>
-                      <h5 className="mb-0">{user.subscription_level}</h5>
-                      <p className="text-muted mb-0">{user.subscription_status}</p>
+                        <span class="badge bg-primary">Client</span>
+                        <span class="ms-2">{{ user.username }}</span>
                     </div>
-                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* My Scanners Section */}
-          <div className="card border-0 shadow-sm mb-4">
-            <div className="card-header d-flex justify-content-between align-items-center bg-white">
-              <h5 className="mb-0">My Scanners</h5>
-              <a href="#" className="btn btn-sm btn-outline-primary">Create New Scanner</a>
-            </div>
-            <div className="card-body p-0">
-              <div className="table-responsive">
-                <table className="table table-hover mb-0">
-                  <thead>
-                    <tr>
-                      <th>Scanner Name</th>
-                      <th>Domain</th>
-                      <th>Status</th>
-                      <th>Created</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scanners.length > 0 ? (
-                      scanners.map((scanner) => (
-                        <tr key={scanner.id}>
-                          <td>
-                            <strong>{scanner.scanner_name}</strong>
-                          </td>
-                          <td>
-                            <a href={`https://${scanner.subdomain}`} target="_blank" rel="noreferrer">
-                              {scanner.subdomain}
-                            </a>
-                          </td>
-                          <td>
-                            <span className={`status-badge ${scanner.deploy_status === 'deployed' ? 'status-deployed' : scanner.deploy_status === 'pending' ? 'status-pending' : 'status-inactive'}`}>
-                              {scanner.deploy_status.charAt(0).toUpperCase() + scanner.deploy_status.slice(1)}
-                            </span>
-                          </td>
-                          <td>{scanner.deploy_date || scanner.created_at}</td>
-                          <td>
-                            <div className="d-flex">
-                              <a href={`#/scanners/${scanner.id}/view`} className="scanner-action" title="View Scanner">
-                                <i className="bi bi-eye"></i>
-                              </a>
-                              <a href={`#/scanners/${scanner.id}/edit`} className="scanner-action" title="Edit Scanner">
-                                <i className="bi bi-pencil"></i>
-                              </a>
-                              <a href={`#/scanners/${scanner.id}/stats`} className="scanner-action" title="Scanner Stats">
-                                <i className="bi bi-graph-up"></i>
-                              </a>
-                              <button 
-                                className="scanner-action" 
-                                title="More Options"
-                                onClick={() => handleScannerOptions(scanner)}
-                              >
-                                <i className="bi bi-three-dots-vertical"></i>
-                              </button>
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                             </div>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="5" className="text-center py-4">
-                          <div className="text-muted">
-                            <i className="bi bi-search fs-3 d-block mb-3"></i>
-                            No scanners found. 
-                            <a href="#" className="text-primary">Create your first scanner</a>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          
-          {/* Recent Scan Activity */}
-          <div className="card border-0 shadow-sm">
-            <div className="card-header bg-white">
-              <h5 className="mb-0">Recent Scan Activity</h5>
-            </div>
-            <div className="card-body p-0">
-              <div className="table-responsive">
-                <table className="table table-hover mb-0">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Scanner</th>
-                      <th>Target</th>
-                      <th>Report</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scanHistory.length > 0 ? (
-                      scanHistory.map((scan) => (
-                        <tr key={scan.scan_id}>
-                          <td>{scan.timestamp}</td>
-                          <td>{scan.scanner_name}</td>
-                          <td>{scan.target}</td>
-                          <td>
-                            <a href={`#/reports/${scan.scan_id}`} className="btn btn-sm btn-outline-primary">
-                              <i className="bi bi-file-earmark-text me-1"></i> View Report
-                            </a>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="4" className="text-center py-4">
-                          <div className="text-muted">
-                            <i className="bi bi-clipboard-check fs-3 d-block mb-3"></i>
-                            No scan history found.
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Scanner Options Modal */}
-      {showScannerOptionsModal && selectedScanner && (
-        <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }} tabIndex="-1">
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Scanner Options</h5>
-                <button type="button" className="btn-close" onClick={() => setShowScannerOptionsModal(false)}></button>
-              </div>
-              <div className="modal-body">
-                <div className="list-group">
-                  <a href={`#/scanners/${selectedScanner.id}/view`} className="list-group-item list-group-item-action">
-                    <i className="bi bi-eye me-2"></i> View Scanner Interface
-                  </a>
-                  <a href={`#/scanners/${selectedScanner.id}/edit`} className="list-group-item list-group-item-action">
-                    <i className="bi bi-pencil me-2"></i> Edit Scanner Configuration
-                  </a>
-                  <a href="#" className="list-group-item list-group-item-action" onClick={handleRegenerateApiKey}>
-                    <i className="bi bi-key me-2"></i> Regenerate API Key
-                  </a>
-                  <a href={`#/scanners/${selectedScanner.id}/stats`} className="list-group-item list-group-item-action">
-                    <i className="bi bi-clock-history me-2"></i> View Scan History
-                  </a>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowScannerOptionsModal(false)}>Close</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* API Key Regeneration Modal */}
-      {showRegenerateApiKeyModal && (
-        <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }} tabIndex="-1">
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Regenerate API Key</h5>
-                <button type="button" className="btn-close" onClick={() => setShowRegenerateApiKeyModal(false)}></button>
-              </div>
-              <div className="modal-body">
-                <div className="alert alert-warning">
-                  <i className="bi bi-exclamation-triangle-fill me-2"></i>
-                  <strong>Warning:</strong> Regenerating the API key will invalidate the previous key. Any applications or services using the old key will need to be updated.
-                </div>
-                <p>Are you sure you want to regenerate the API key for this scanner?</p>
-                {apiKeyRegenerated && (
-                  <div className="mt-3">
-                    <div className="alert alert-success">
-                      <p className="mb-2"><strong>New API Key:</strong></p>
-                      <div className="input-group mb-2">
-                        <input type="text" value={newApiKey} className="form-control" readOnly />
-                        <button 
-                          className="btn btn-outline-secondary" 
-                          type="button"
-                          onClick={() => copyToClipboard(newApiKey, setCopiedNewApiKey)}
-                        >
-                          {copiedNewApiKey ? (
-                            <i className="bi bi-check"></i>
-                          ) : (
-                            <i className="bi bi-clipboard"></i>
-                          )}
-                        </button>
-                      </div>
-                      <p className="small text-muted mb-0">Please save this key in a secure location. It will not be shown again.</p>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <!-- Stats Overview -->
+                <div class="row g-4 mb-4">
+                    <div class="col-md-4">
+                        <div class="card stat-card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="icon-circle me-3 bg-primary bg-opacity-10">
+                                        <i class="bi bi-shield-check text-primary"></i>
+                                    </div>
+                                    <h6 class="mb-0">My Scanners</h6>
+                                </div>
+                                <div class="stat-value">{{ scanners|length }}</div>
+                                <p class="text-muted mb-0">Total deployed scanners</p>
+                            </div>
+                        </div>
                     </div>
-                  </div>
-                )}
-              </div>
-              <div className="modal-footer">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
-                  onClick={() => setShowRegenerateApiKeyModal(false)}
-                  disabled={isRegenerating}
-                >
-                  {apiKeyRegenerated ? 'Close' : 'Cancel'}
-                </button>
-                {!apiKeyRegenerated && (
-                  <button 
-                    type="button" 
-                    className="btn btn-danger" 
-                    onClick={confirmRegenerateApiKey}
-                    disabled={isRegenerating}
-                  >
-                    {isRegenerating ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...
-                      </>
-                    ) : (
-                      'Regenerate API Key'
-                    )}
-                  </button>
-                )}
-              </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card stat-card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="icon-circle me-3 bg-success bg-opacity-10">
+                                        <i class="bi bi-search text-success"></i>
+                                    </div>
+                                    <h6 class="mb-0">Total Scans</h6>
+                                </div>
+                                <div class="stat-value">{{ total_scans }}</div>
+                                <p class="text-muted mb-0">Scans conducted to date</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card stat-card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="icon-circle me-3 bg-warning bg-opacity-10">
+                                        <i class="bi bi-calendar-check text-warning"></i>
+                                    </div>
+                                    <h6 class="mb-0">Subscription</h6>
+                                </div>
+                                <div class="d-flex align-items-center">
+                                    <div>
+                                        <h5 class="mb-0">{{ user_client.subscription_level|default('Basic')|title }}</h5>
+                                        <p class="text-muted mb-0">{{ user_client.subscription_status|default('Active')|title }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- My Scanners Section -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center bg-white">
+                        <h5 class="mb-0">My Scanners</h5>
+                        <a href="/customize" class="btn btn-sm btn-outline-primary">Create New Scanner</a>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Scanner Name</th>
+                                        <th>Domain</th>
+                                        <th>Status</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if scanners %}
+                                        {% for scanner in scanners %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ scanner.scanner_name }}</strong>
+                                            </td>
+                                            <td>
+                                                <a href="https://{{ scanner.subdomain }}.yourscannerdomain.com" target="_blank">
+                                                    {{ scanner.subdomain }}.yourscannerdomain.com
+                                                </a>
+                                            </td>
+                                            <td>
+                                                <span class="status-badge {% if scanner.deploy_status == 'deployed' %}status-deployed{% elif scanner.deploy_status == 'pending' %}status-pending{% else %}status-inactive{% endif %}">
+                                                    {{ scanner.deploy_status|title }}
+                                                </span>
+                                            </td>
+                                            <td>{{ scanner.deploy_date|default(scanner.created_at, true) }}</td>
+                                            <td>
+                                                <div class="d-flex">
+                                                    <a href="/client/scanners/{{ scanner.id }}/view" class="scanner-action" data-bs-toggle="tooltip" title="View Scanner">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                    <a href="/client/scanners/{{ scanner.id }}/edit" class="scanner-action" data-bs-toggle="tooltip" title="Edit Scanner">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </a>
+                                                    <a href="/client/scanners/{{ scanner.id }}/stats" class="scanner-action" data-bs-toggle="tooltip" title="Scanner Stats">
+                                                        <i class="bi bi-graph-up"></i>
+                                                    </a>
+                                                    <button class="scanner-action" data-bs-toggle="modal" data-bs-target="#scannerOptionsModal" data-scanner-id="{{ scanner.id }}" title="More Options">
+                                                        <i class="bi bi-three-dots-vertical"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="5" class="text-center py-4">
+                                                <div class="text-muted">
+                                                    <i class="bi bi-search fs-3 d-block mb-3"></i>
+                                                    No scanners found. 
+                                                    <a href="/customize" class="text-primary">Create your first scanner</a>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Scan Activity -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Recent Scan Activity</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Scanner</th>
+                                        <th>Target</th>
+                                        <th>Report</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if scan_history %}
+                                        {% for scan in scan_history %}
+                                        <tr>
+                                            <td>{{ scan.timestamp }}</td>
+                                            <td>{{ scan.scanner_name }}</td>
+                                            <td>{{ scan.target }}</td>
+                                            <td>
+                                                <a href="/client/reports/{{ scan.scan_id }}" class="btn btn-sm btn-outline-primary">
+                                                    <i class="bi bi-file-earmark-text me-1"></i> View Report
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="4" class="text-center py-4">
+                                                <div class="text-muted">
+                                                    <i class="bi bi-clipboard-check fs-3 d-block mb-3"></i>
+                                                    No scan history found.
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
         </div>
-      )}
     </div>
-  );
-};
-
-export default ClientDashboard;
+    
+    <!-- Scanner Options Modal -->
+    <div class="modal fade" id="scannerOptionsModal" tabindex="-1" aria-labelledby="scannerOptionsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="scannerOptionsModalLabel">Scanner Options</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="list-group">
+                        <a href="#" class="list-group-item list-group-item-action" id="viewScannerLink">
+                            <i class="bi bi-eye me-2"></i> View Scanner Interface
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" id="editScannerLink">
+                            <i class="bi bi-pencil me-2"></i> Edit Scanner Configuration
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" id="regenerateApiKeyLink">
+                            <i class="bi bi-key me-2"></i> Regenerate API Key
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" id="scanHistoryLink">
+                            <i class="bi bi-clock-history me-2"></i> View Scan History
+                        </a>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- API Key Regeneration Modal -->
+    <div class="modal fade" id="regenerateApiKeyModal" tabindex="-1" aria-labelledby="regenerateApiKeyModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="regenerateApiKeyModalLabel">Regenerate API Key</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <strong>Warning:</strong> Regenerating the API key will invalidate the previous key. Any applications or services using the old key will need to be updated.
+                    </div>
+                    <p>Are you sure you want to regenerate the API key for this scanner?</p>
+                    <div id="apiKeyResult" class="mt-3" style="display: none;">
+                        <div class="alert alert-success">
+                            <p class="mb-2"><strong>New API Key:</strong></p>
+                            <div class="input-group mb-2">
+                                <input type="text" id="newApiKey" class="form-control" readonly>
+                                <button class="btn btn-outline-secondary" type="button" id="copyApiKey">
+                                    <i class="bi bi-clipboard"></i>
+                                </button>
+                            </div>
+                            <p class="small text-muted mb-0">Please save this key in a secure location. It will not be shown again.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <form id="regenerateApiKeyForm" method="post">
+                        <input type="hidden" id="regenerateScannerId" name="scanner_id" value="">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-danger" id="confirmRegenerateApiKey">Regenerate API Key</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+            
+            // Scanner Options Modal
+            const scannerOptionsModal = document.getElementById('scannerOptionsModal');
+            if (scannerOptionsModal) {
+                scannerOptionsModal.addEventListener('show.bs.modal', function(event) {
+                    const button = event.relatedTarget;
+                    const scannerId = button.getAttribute('data-scanner-id');
+                    
+                    // Set up links in the modal
+                    document.getElementById('viewScannerLink').href = `/client/scanners/${scannerId}/view`;
+                    document.getElementById('editScannerLink').href = `/client/scanners/${scannerId}/edit`;
+                    document.getElementById('scanHistoryLink').href = `/client/scanners/${scannerId}/stats`;
+                    
+                    // Setup API key regeneration
+                    document.getElementById('regenerateApiKeyLink').addEventListener('click', function(e) {
+                        e.preventDefault();
+                        document.getElementById('regenerateScannerId').value = scannerId;
+                        const regenerateModal = new bootstrap.Modal(document.getElementById('regenerateApiKeyModal'));
+                        regenerateModal.show();
+                    });
+                });
+            }
+            
+            // Regenerate API Key form
+            const regenerateApiKeyForm = document.getElementById('regenerateApiKeyForm');
+            if (regenerateApiKeyForm) {
+                regenerateApiKeyForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const scannerId = document.getElementById('regenerateScannerId').value;
+                    const submitBtn = document.getElementById('confirmRegenerateApiKey');
+                    const originalBtnText = submitBtn.textContent;
+                    
+                    // Show loading state
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+                    
+                    // Make AJAX request to regenerate key
+                    fetch(`/client/scanners/${scannerId}/regenerate-api-key`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // Show new API key
+                            document.getElementById('newApiKey').value = data.api_key;
+                            document.getElementById('apiKeyResult').style.display = 'block';
+                            
+                            // Change button to "Done"
+                            submitBtn.innerHTML = 'Done';
+                            submitBtn.classList.remove('btn-danger');
+                            submitBtn.classList.add('btn-success');
+                            
+                            // Set up clipboard functionality
+                            document.getElementById('copyApiKey').addEventListener('click', function() {
+                                const apiKeyInput = document.getElementById('newApiKey');
+                                apiKeyInput.select();
+                                document.execCommand('copy');
+                                this.innerHTML = '<i class="bi bi-check"></i>';
+                                setTimeout(() => {
+                                    this.innerHTML = '<i class="bi bi-clipboard"></i>';
+                                }, 2000);
+                            });
+                        } else {
+                            // Show error
+                            alert('Error: ' + data.message);
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = originalBtnText;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred while regenerating the API key.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalBtnText;
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html>
