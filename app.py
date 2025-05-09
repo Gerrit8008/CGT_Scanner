@@ -339,6 +339,14 @@ except Exception as register_error:
     except Exception as basic_error:
         logging.error(f"Failed to register basic blueprints: {basic_error}")
 
+    try:
+        from admin_routes import admin_routes_bp
+        app.register_blueprint(admin_routes_bp)
+    except ImportError:
+        print("Could not import admin_routes_bp")
+    except Exception as e:
+        print(f"Error registering admin_routes_bp: {e}")
+
 # Initialize Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
