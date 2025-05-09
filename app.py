@@ -3128,8 +3128,9 @@ def run_dashboard_fix():
         tables_fix_result = create_missing_tables()
         results.append(f"Missing tables creation: {'Success' if tables_fix_result else 'Failed'}")
         
-        # Return the results
-        return f"""
+        # Create HTML output without using problematic f-strings with backslashes
+        result_text = "<br>".join(results)
+        html = f"""
         <html>
             <head>
                 <title>Dashboard Fix Results</title>
@@ -3144,16 +3145,19 @@ def run_dashboard_fix():
             <body>
                 <div class="container">
                     <h1>Dashboard Fix Results</h1>
-                    <pre>{'\\n'.join(results)}</pre>
+                    <div style="background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto;">
+                        {result_text}
+                    </div>
                     <p><a href="/admin/dashboard">Try accessing the dashboard</a></p>
                 </div>
             </body>
         </html>
         """
+        return html
     except Exception as e:
         import traceback
         error_traceback = traceback.format_exc()
-        return f"""
+        html = f"""
         <html>
             <head>
                 <title>Dashboard Fix Error</title>
@@ -3174,6 +3178,7 @@ def run_dashboard_fix():
             </body>
         </html>
         """
+        return html
 
 @app.route('/run_emergency_admin')
 def run_emergency_admin():
@@ -3186,28 +3191,29 @@ def run_emergency_admin():
         success = create_emergency_admin()
         
         # Get admin details if successful
-        admin_details = """
-        <div class="success">
-            <p>Emergency admin created successfully!</p>
-            <p>Username: emergency_admin</p>
-            <p>Password: admin123</p>
-        </div>
-        <p><a href="/admin/dashboard">Go to Admin Dashboard</a></p>
-        """ if success else """
-        <div class="error">
-            <p>Failed to create emergency admin.</p>
-        </div>
-        """
+        if success:
+            admin_details = """
+            <div style="color: green; padding: 10px; background-color: #e6ffe6; border-radius: 5px;">
+                <p>Emergency admin created successfully!</p>
+                <p>Username: emergency_admin</p>
+                <p>Password: admin123</p>
+            </div>
+            <p><a href="/admin/dashboard">Go to Admin Dashboard</a></p>
+            """
+        else:
+            admin_details = """
+            <div style="color: red; padding: 10px; background-color: #ffe6e6; border-radius: 5px;">
+                <p>Failed to create emergency admin.</p>
+            </div>
+            """
         
         # Return the results
-        return f"""
+        html = f"""
         <html>
             <head>
                 <title>Emergency Admin Creation</title>
                 <style>
                     body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    .success {{ color: green; padding: 10px; background-color: #e6ffe6; border-radius: 5px; }}
-                    .error {{ color: red; padding: 10px; background-color: #ffe6e6; border-radius: 5px; }}
                     .container {{ max-width: 800px; margin: 0 auto; }}
                 </style>
             </head>
@@ -3219,10 +3225,11 @@ def run_emergency_admin():
             </body>
         </html>
         """
+        return html
     except Exception as e:
         import traceback
         error_traceback = traceback.format_exc()
-        return f"""
+        html = f"""
         <html>
             <head>
                 <title>Emergency Admin Error</title>
@@ -3243,6 +3250,7 @@ def run_emergency_admin():
             </body>
         </html>
         """
+        return html
 
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
