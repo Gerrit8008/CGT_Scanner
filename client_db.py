@@ -521,100 +521,98 @@ def get_dashboard_summary(cursor=None):
         # Close connection if we opened it
         if close_conn and conn:
             conn.close()
+            
 @with_transaction
-def list_clients(conn, page=1, per_page=10, filters=None, sort_by='id', sort_order='desc'):
+def list_clients(page=1, per_page=10, filters=None, sort_by=None, sort_dir='asc'):
     """
     List clients with pagination and filtering
     
     Args:
-        conn: Database connection
-        page (int): Page number (1-indexed)
-        per_page (int): Number of items per page
-        filters (dict): Optional filters like {'search': 'query', 'status': 'active', etc.}
-        sort_by (str): Column to sort by
-        sort_order (str): Sort order ('asc' or 'desc')
-    
+        page (int): Page number
+        per_page (int): Items per page
+        filters (dict, optional): Filter conditions
+        sort_by (str, optional): Column to sort by
+        sort_dir (str, optional): Sort direction ('asc' or 'desc')
+        
     Returns:
         dict: Dictionary with clients and pagination info
     """
-    # Validate and sanitize parameters
-    page = max(1, page)  # Ensure page is at least 1
-    per_page = min(100, max(1, per_page))  # Between 1 and 100
-    offset = (page - 1) * per_page
-    
-    # Default filters
-    if filters is None:
-        filters = {}
-    
-    # Build query
-    query = "SELECT * FROM clients"
-    count_query = "SELECT COUNT(*) as total FROM clients"
-    
-    # Apply filters
-    conditions = []
-    params = []
-    
-    if 'search' in filters and filters['search']:
-        search_term = f"%{filters['search']}%"
-        conditions.append("(business_name LIKE ? OR business_domain LIKE ? OR contact_email LIKE ?)")
-        params.extend([search_term, search_term, search_term])
-    
-    if 'subscription' in filters and filters['subscription']:
-        conditions.append("subscription_level = ?")
-        params.append(filters['subscription'])
-    
-    if 'status' in filters and filters['status']:
-        if filters['status'] == 'active':
-            conditions.append("active = 1")
-        elif filters['status'] == 'inactive':
-            conditions.append("active = 0")
-    else:
-        # By default, show only active clients
-        conditions.append("active = 1")
-    
-    if 'created_after' in filters and filters['created_after']:
-        conditions.append("created_at > ?")
-        params.append(filters['created_after'])
-    
-    # Add WHERE clause if conditions exist
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-        count_query += " WHERE " + " AND ".join(conditions)
-    
-    # Add ORDER BY clause
-    valid_sort_columns = ['id', 'business_name', 'created_at', 'subscription_level']
-    if sort_by not in valid_sort_columns:
-        sort_by = 'id'
-    
-    sort_order = 'DESC' if sort_order.lower() == 'desc' else 'ASC'
-    query += f" ORDER BY {sort_by} {sort_order}"
-    
-    # Add LIMIT and OFFSET
-    query += f" LIMIT {per_page} OFFSET {offset}"
-    
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    # Get total count
-    cursor.execute(count_query, params)
-    total_count = cursor.fetchone()['total']
+    # Base query
+    query = "SELECT * FROM clients"
+    count_query = "SELECT COUNT(*) FROM clients"
     
-    # Get current page data
+    # Add filter conditions if provided
+    params = []
+    where_clauses = []
+    
+    if filters:
+        if 'subscription' in filters and filters['subscription']:
+            where_clauses.append("subscription = ?")
+            params.append(filters['subscription'])
+        
+        if 'status' in filters and filters['status']:
+            active = 1 if filters['status'].lower() == 'active' else 0
+            where_clauses.append("active = ?")
+            params.append(active)
+        
+        if 'search' in filters and filters['search']:
+            search_term = f"%{filters['search']}%"
+            where_clauses.append("(business_name LIKE ? OR business_domain LIKE ? OR contact_email LIKE ?)")
+            params.extend([search_term, search_term, search_term])
+    
+    # Add WHERE clause if there are filter conditions
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
+        count_query += " WHERE " + " AND ".join(where_clauses)
+    
+    # Add sorting
+    if sort_by:
+        valid_columns = ['id', 'business_name', 'business_domain', 'created_at', 'subscription']
+        if sort_by in valid_columns:
+            sort_direction = "DESC" if sort_dir.lower() == 'desc' else "ASC"
+            query += f" ORDER BY {sort_by} {sort_direction}"
+        else:
+            # Default sorting
+            query += " ORDER BY id DESC"
+    else:
+        # Default sorting
+        query += " ORDER BY id DESC"
+    
+    # Get total count for pagination
+    cursor.execute(count_query, params)
+    total_count = cursor.fetchone()[0]
+    
+    # Add pagination
+    offset = (page - 1) * per_page
+    query += " LIMIT ? OFFSET ?"
+    params.extend([per_page, offset])
+    
+    # Execute final query
     cursor.execute(query, params)
     clients = [dict(row) for row in cursor.fetchall()]
     
-    # Calculate pagination details
+    # Calculate pagination info
     total_pages = (total_count + per_page - 1) // per_page  # Ceiling division
+    
+    # Build pagination object
+    pagination = {
+        'page': page,
+        'per_page': per_page,
+        'total_count': total_count,
+        'total_pages': total_pages
+    }
+    
+    conn.close()
     
     return {
         'clients': clients,
-        'pagination': {
-            'page': page,
-            'per_page': per_page,
-            'total_count': total_count,
-            'total_pages': total_pages
-        }
+        'pagination': pagination
     }
-
+    
 @with_transaction
 def get_client_by_id(conn, client_id):
     """Get client details by ID"""
