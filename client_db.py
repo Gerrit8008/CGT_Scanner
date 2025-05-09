@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 import functools
 from functools import wraps
 
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -189,6 +188,8 @@ SCHEMA_SQL = """
 -- This can be empty if you're creating tables explicitly in init_client_db
 """
 
+
+
 def with_transaction(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -206,129 +207,58 @@ def with_transaction(func):
             conn.close()
     return wrapper
 
-def get_client_by_user_id(conn, user_id):
-    """
-    Get a client by user_id with enhanced error handling
-    """
+def get_client_by_user_id(user_id):
+    """Wrapper function for get_client_by_user_id"""
     try:
+        # Create a new connection for this operation
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # First, check if users table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='clients'")
-        if not cursor.fetchone():
-            logging.error("Clients table doesn't exist. Database may not be initialized properly.")
+        result = get_client_by_user_id(conn, cursor, user_id)
+        conn.close()
+        return result
+    except:
+        # If this fails, try the old function signature
+        return _get_client_by_user_id_legacy(user_id)
+
+def _get_client_by_user_id_legacy(user_id):
+    """Legacy version of get_client_by_user_id for backward compatibility"""
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
+                   cu.default_scans, ds.subdomain, ds.deploy_status
+            FROM clients c
+            LEFT JOIN customizations cu ON c.id = cu.client_id
+            LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
+            WHERE c.user_id = ? AND c.active = 1
+        ''', (user_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
             return None
             
-        # Check if the customizations table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='customizations'")
-        if not cursor.fetchone():
-            logging.warning("Customizations table doesn't exist. Will create it now.")
-            # Create the customizations table if it doesn't exist
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS customizations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id INTEGER NOT NULL,
-                primary_color TEXT,
-                secondary_color TEXT,
-                logo_path TEXT,
-                favicon_path TEXT,
-                email_subject TEXT,
-                email_intro TEXT,
-                email_footer TEXT,
-                default_scans TEXT,
-                css_override TEXT,
-                html_override TEXT,
-                last_updated TEXT,
-                updated_by INTEGER,
-                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-                FOREIGN KEY (updated_by) REFERENCES users(id)
-            )
-            ''')
-            conn.commit()
+        # Convert row to dict
+        client_data = dict(row)
         
-        # Get the client
-        query = """
-        SELECT c.*, 
-               COALESCE(cu.primary_color, '#336699') as primary_color,
-               COALESCE(cu.secondary_color, '#6699cc') as secondary_color,
-               COALESCE(cu.logo_path, '') as logo_path,
-               COALESCE(cu.favicon_path, '') as favicon_path,
-               COALESCE(cu.email_subject, 'Security Scan Results') as email_subject,
-               COALESCE(cu.email_intro, 'Please find your security scan results attached.') as email_intro,
-               COALESCE(cu.email_footer, 'Thank you for using our service.') as email_footer,
-               COALESCE(cu.default_scans, 'basic,ssl,headers') as default_scans
-        FROM clients c
-        LEFT JOIN customizations cu ON c.id = cu.client_id
-        WHERE c.user_id = ?
-        """
-        
-        cursor.execute(query, (user_id,))
-        client = cursor.fetchone()
-        
-        return dict(client) if client else None
-        
-    except sqlite3.OperationalError as e:
-        # If error is about missing tables, create them
-        if "no such table" in str(e):
-            table_name = str(e).split(":")[-1].strip()
-            logging.error(f"Table {table_name} doesn't exist. Database may not be initialized properly.")
+        # Convert default_scans JSON to list if present
+        if client_data.get('default_scans'):
+            try:
+                client_data['default_scans'] = json.loads(client_data['default_scans'])
+            except json.JSONDecodeError:
+                client_data['default_scans'] = []
+        else:
+            client_data['default_scans'] = []
             
-            # Try to create the missing table if it's one we know about
-            if table_name == "customizations":
-                try:
-                    cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS customizations (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        client_id INTEGER NOT NULL,
-                        primary_color TEXT,
-                        secondary_color TEXT,
-                        logo_path TEXT,
-                        favicon_path TEXT,
-                        email_subject TEXT,
-                        email_intro TEXT,
-                        email_footer TEXT,
-                        default_scans TEXT,
-                        css_override TEXT,
-                        html_override TEXT,
-                        last_updated TEXT,
-                        updated_by INTEGER,
-                        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-                        FOREIGN KEY (updated_by) REFERENCES users(id)
-                    )
-                    ''')
-                    conn.commit()
-                    logging.info(f"Created missing table: {table_name}")
-                    
-                    # Try the query again
-                    return get_client_by_user_id(conn, user_id)
-                except Exception as inner_e:
-                    logging.error(f"Failed to create table {table_name}: {inner_e}")
-            
-            # For audit_log table
-            if table_name == "audit_log":
-                try:
-                    cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS audit_log (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id INTEGER,
-                        action TEXT NOT NULL,
-                        entity_type TEXT NOT NULL,
-                        entity_id INTEGER NOT NULL,
-                        changes TEXT,
-                        timestamp TEXT NOT NULL,
-                        ip_address TEXT,
-                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-                    )
-                    ''')
-                    conn.commit()
-                    logging.info(f"Created missing table: {table_name}")
-                except Exception as inner_e:
-                    logging.error(f"Failed to create table {table_name}: {inner_e}")
-        
-        logging.error(f"Error retrieving client by user ID: {e}")
-        return None
+        return client_data
     except Exception as e:
-        logging.error(f"Error retrieving client by user ID: {e}")
+        logging.error(f"Error in legacy get_client_by_user_id: {e}")
         return None
 
 # Add this function to client_db.py for audit logging with better error handling
