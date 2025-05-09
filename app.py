@@ -305,7 +305,21 @@ app.register_blueprint(scanner_bp)
 app.register_blueprint(client_bp) 
 app.register_blueprint(emergency_bp)
 
-app = register_all_routes(app)
+try:
+    from register_routes import register_all_routes
+    app = register_all_routes(app)
+    logging.info("Routes registered successfully")
+except Exception as register_error:
+    logging.error(f"Error registering routes: {register_error}")
+    # Still register the basic blueprints
+    try:
+        from auth import auth_bp
+        from admin import admin_bp
+        app.register_blueprint(auth_bp)
+        app.register_blueprint(admin_bp)
+        logging.info("Registered basic blueprints as fallback")
+    except Exception as basic_error:
+        logging.error(f"Failed to register basic blueprints: {basic_error}")
 
 # Initialize Flask-Login
 login_manager = LoginManager()
