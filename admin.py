@@ -41,28 +41,40 @@ def admin_required(f):
 @admin_bp.route('/dashboard')
 @admin_required
 def dashboard(user):
-    """Admin dashboard"""
-    # Get summary stats
-    from client_db import get_dashboard_summary, list_clients
-    summary = get_dashboard_summary()
-    
-    # Get recent clients (specifically getting new clients registered in the past month)
-    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
-    new_clients = list_clients(
-        page=1, 
-        per_page=5, 
-        filters={'created_after': thirty_days_ago},
-        sort_by='created_at',
-        sort_order='desc'
-    ).get('clients', [])
-    
-    return render_template(
-        'admin/admin-dashboard.html',
-        user=user,
-        summary=summary,
-        recent_clients=new_clients,
-        new_clients=new_clients  # Add the specific new clients list
-    )
+    """Admin dashboard with summary statistics"""
+    try:
+        # Connect to the database
+        from client_db import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get dashboard summary data with the cursor parameter
+        summary = get_dashboard_summary(cursor)
+        
+        # Get recent clients with proper parameters
+        # Removed sort_by parameter that was causing an error
+        recent_clients = list_clients(page=1, per_page=5)['clients']
+        
+        # Close the connection
+        conn.close()
+        
+        # Render dashboard template
+        # Changed 'summary' to 'dashboard_stats' to match template expectations
+        return render_template(
+            'admin/admin-dashboard.html',
+            user=user,
+            dashboard_stats=summary,
+            recent_clients=recent_clients
+        )
+    except Exception as e:
+        import traceback
+        print(f"Error in dashboard: {e}")
+        print(traceback.format_exc())
+        # Return a simple error page
+        return render_template(
+            'admin/error.html',
+            error=f"Error loading dashboard: {str(e)}"
+        )
 
 # User management
 @admin_bp.route('/users')
