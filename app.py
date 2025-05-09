@@ -39,6 +39,7 @@ from auth import auth_bp
 from auth_hotfix import register_auth_hotfix
 from emergency_access import emergency_bp
 from register_routes import register_all_routes
+from admin_fix_integration import apply_admin_fixes
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -304,6 +305,8 @@ app.register_blueprint(api_bp)
 app.register_blueprint(scanner_bp)
 app.register_blueprint(client_bp) 
 app.register_blueprint(emergency_bp)
+
+apply_admin_fixes(app)
 
 try:
     from register_routes import register_all_routes
