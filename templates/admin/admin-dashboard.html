@@ -1,409 +1,757 @@
-import React, { useState, useEffect } from 'react';
-import { AlertCircle, Users, Shield, PlusCircle, CreditCard, FileText, Settings, LogOut, Bell, Search, BarChart2 } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Scanner Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 p-0 sidebar">
+                <div class="text-center mb-4">
+                    <h4>Scanner Platform</h4>
+                    <p class="mb-0 small">Admin Panel</p>
+                </div>
+                
+                <div class="px-3">
+                    <a href="/admin/dashboard" class="sidebar-link active">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                    <a href="/admin/clients" class="sidebar-link">
+                        <i class="bi bi-people"></i> Client Management
+                    </a>
+                    <a href="/customize" class="sidebar-link">
+                        <i class="bi bi-plus-circle"></i> Create Scanner
+                    </a>
+                    <a href="/admin/subscriptions" class="sidebar-link">
+                        <i class="bi bi-credit-card"></i> Subscriptions
+                    </a>
+                    <a href="/admin/reports" class="sidebar-link">
+                        <i class="bi bi-file-earmark-text"></i> Reports
+                    </a>
+                    <a href="/admin/settings" class="sidebar-link">
+                        <i class="bi bi-gear"></i> Settings
+                    </a>
+                    
+                    <hr class="my-4">
+                    
+                    <a href="{{ url_for('auth.logout') }}" class="sidebar-link text-danger">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10 ms-auto main-content">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2>Dashboard</h2>
+                    <div>
+                        <span class="badge bg-primary">Admin</span>
+                        <span class="ms-2">{{ user.username }}</span>
+                    </div>
+                </div>
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <!-- Stats Overview -->
+                <div class="row g-4 mb-4">
+                    <div class="col-md-3">
+                        <div class="card stat-card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="icon-circle me-3 bg-primary bg-opacity-10">
+                                        <i class="bi bi-people text-primary"></i>
+                                    </div>
+                                    <h6 class="mb-0">Total Clients</h6>
+                                </div>
+                                <div class="stat-value">{{ dashboard_stats.total_clients|default('42') }}</div>
+                                <p class="text-success mb-0"><i class="bi bi-arrow-up"></i> 12% increase</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card stat-card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="icon-circle me-3 bg-success bg-opacity-10">
+                                        <i class="bi bi-search text-success"></i>
+                                    </div>
+                                    <h6 class="mb-0">Active Scans</h6>
+                                </div>
+                                <div class="stat-value">{{ dashboard_stats.active_scans|default('238') }}</div>
+                                <p class="text-success mb-0"><i class="bi bi-arrow-up"></i> 8% increase</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card stat-card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="icon-circle me-3 bg-warning bg-opacity-10">
+                                        <i class="bi bi-credit-card text-warning"></i>
+                                    </div>
+                                    <h6 class="mb-0">Monthly Revenue</h6>
+                                </div>
+                                <div class="stat-value">${{ dashboard_stats.monthly_revenue|default('4,250') }}</div>
+                                <p class="text-success mb-0"><i class="bi bi-arrow-up"></i> 15% increase</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card stat-card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="icon-circle me-3 bg-info bg-opacity-10">
+                                        <i class="bi bi-shield-check text-info"></i>
+                                    </div>
+                                    <h6 class="mb-0">Deployed Scanners</h6>
+                                </div>
+                                <div class="stat-value">{{ dashboard_stats.deployed_scanners|default('35') }}</div>
+                                <p class="text-success mb-0"><i class="bi bi-arrow-up"></i> 5% increase</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- User Activity Section -->
+                <div class="row g-4 mb-4">
+                    <div class="col-md-8">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">User Activity</h5>
+                                <a href="{{ url_for('auth.admin_users') }}" class="btn btn-sm btn-outline-primary">Manage Users</a>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container" style="height: 250px;">
+                                    <canvas id="userActivityChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+    
+                    <div class="col-md-4">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0">User Distribution</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container" style="height: 250px;">
+                                    <canvas id="userDistributionChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-const AdminDashboard = () => {
-  const [recentClients, setRecentClients] = useState([
-    { id: 1, business_name: 'Acme Corp', business_domain: 'acmecorp.com', contact_email: 'admin@acmecorp.com', created_at: 'May 12, 2025' },
-    { id: 2, business_name: 'TechFlow Solutions', business_domain: 'techflow.io', contact_email: 'security@techflow.io', created_at: 'Apr 28, 2025' },
-    { id: 3, business_name: 'Global Innovations', business_domain: 'globalinnovations.com', contact_email: 'it@globalinnovations.com', created_at: 'Apr 15, 2025' },
-    { id: 4, business_name: 'Stellar Services', business_domain: 'stellar.io', contact_email: 'contact@stellar.io', created_at: 'May 2, 2025' },
-    { id: 5, business_name: 'Quantum Data', business_domain: 'quantumdata.io', contact_email: 'security@quantumdata.io', created_at: 'Apr 5, 2025' }
-  ]);
-  
-  const [stats, setStats] = useState({
-    totalClients: 42,
-    activeScans: 238,
-    monthlyRevenue: 4250,
-    deployedScanners: 35
-  });
-  
-  const [activeLink, setActiveLink] = useState('dashboard');
-  
-  // Example function to handle new client registration notification
-  useEffect(() => {
-    // This would normally fetch from your API
-    const checkNewClients = () => {
-      // Simulate a new client for demonstration
-      const hasNewClients = true;
-      if (hasNewClients) {
-        // You would add notification logic here
-        console.log('New client notification triggered');
-      }
-    };
-    
-    checkNewClients();
-    // Set up interval to periodically check (every 5 minutes)
-    const interval = setInterval(checkNewClients, 5 * 60 * 1000);
-    
-    return () => clearInterval(interval);
-  }, []);
-  
-  // Generate client logo initials
-  const getInitials = (name) => {
-    if (!name) return '';
-    return name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
-  };
-  
-  return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Sidebar */}
-      <div className="w-64 bg-gray-900 text-white flex flex-col">
-        <div className="p-6 text-center">
-          <h4 className="text-xl font-semibold">Scanner Platform</h4>
-          <p className="text-xs text-gray-400">Admin Panel</p>
+                <!-- Recent Logins -->
+                <div class="row g-4 mb-4">
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0">Recent Logins</h5>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>User</th>
+                                                <th>Email</th>
+                                                <th>Role</th>
+                                                <th>IP Address</th>
+                                                <th>Time</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="recentLoginsTable">
+                                            {% if recent_logins %}
+                                                {% for login in recent_logins %}
+                                                <tr>
+                                                    <td>{{ login.username }}</td>
+                                                    <td>{{ login.email }}</td>
+                                                    <td>
+                                                        <span class="badge {{ 'bg-dark' if login.role == 'admin' else 'bg-info' }}">
+                                                            {{ login.role }}
+                                                        </span>
+                                                    </td>
+                                                    <td>{{ login.ip_address|default('Unknown') }}</td>
+                                                    <td>{{ login.timestamp|default(login.created_at) }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <td>admin</td>
+                                                    <td>admin@scannerplatform.com</td>
+                                                    <td><span class="badge bg-dark">admin</span></td>
+                                                    <td>192.168.1.101</td>
+                                                    <td>Today, 10:25 AM</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>jsmith</td>
+                                                    <td>john.smith@acmecorp.com</td>
+                                                    <td><span class="badge bg-info">client</span></td>
+                                                    <td>203.0.113.42</td>
+                                                    <td>Today, 9:14 AM</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>mrogers</td>
+                                                    <td>mike@globalinnovations.com</td>
+                                                    <td><span class="badge bg-info">client</span></td>
+                                                    <td>198.51.100.73</td>
+                                                    <td>Yesterday, 4:37 PM</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>support</td>
+                                                    <td>support@scannerplatform.com</td>
+                                                    <td><span class="badge bg-dark">admin</span></td>
+                                                    <td>192.168.1.105</td>
+                                                    <td>Yesterday, 2:18 PM</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>lchen</td>
+                                                    <td>lucy@techflow.io</td>
+                                                    <td><span class="badge bg-info">client</span></td>
+                                                    <td>172.16.24.98</td>
+                                                    <td>May 7, 2025, 11:05 AM</td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Client Scanners Section -->
+                <div class="row g-4 mb-4">
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Deployed Scanners</h5>
+                                <a href="/customize" class="btn btn-sm btn-outline-primary">Create New Scanner</a>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Client</th>
+                                                <th>Scanner Name</th>
+                                                <th>Subdomain</th>
+                                                <th>Status</th>
+                                                <th>Created Date</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="deployed-scanners-table">
+                                            {% if deployed_scanners %}
+                                                {% for scanner in deployed_scanners %}
+                                                <tr>
+                                                    <td>
+                                                        <div class="d-flex align-items-center">
+                                                            <div class="client-logo me-3">{{ scanner.business_name|truncate(2, True, '') }}</div>
+                                                            <div>
+                                                                <div class="fw-bold">{{ scanner.business_name }}</div>
+                                                                <div class="text-muted small">{{ scanner.business_domain }}</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td>{{ scanner.scanner_name }}</td>
+                                                    <td>
+                                                        <a href="https://{{ scanner.subdomain }}.yourscannerdomain.com" target="_blank">
+                                                            {{ scanner.subdomain }}.yourscannerdomain.com
+                                                        </a>
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge {% if scanner.deploy_status == 'deployed' %}bg-success{% elif scanner.deploy_status == 'pending' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                                                            {{ scanner.deploy_status|title }}
+                                                        </span>
+                                                    </td>
+                                                    <td>{{ scanner.deploy_date|default(scanner.created_at) }}</td>
+                                                    <td>
+                                                        <div class="d-flex">
+                                                            <a href="/admin/scanners/{{ scanner.id }}/view" class="client-action" data-bs-toggle="tooltip" title="View Scanner">
+                                                                <i class="bi bi-eye"></i>
+                                                            </a>
+                                                            <a href="/admin/scanners/{{ scanner.id }}/edit" class="client-action" data-bs-toggle="tooltip" title="Edit Scanner">
+                                                                <i class="bi bi-pencil"></i>
+                                                            </a>
+                                                            <a href="/admin/scanners/{{ scanner.id }}/stats" class="client-action" data-bs-toggle="tooltip" title="Scanner Stats">
+                                                                <i class="bi bi-graph-up"></i>
+                                                            </a>
+                                                            <button class="client-action" data-bs-toggle="modal" data-bs-target="#scannerOptionsModal" data-scanner-id="{{ scanner.id }}" title="More Options">
+                                                                <i class="bi bi-three-dots-vertical"></i>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <!-- Example row (only shown if no scanners from backend) -->
+                                                <tr>
+                                                    <td>
+                                                        <div class="d-flex align-items-center">
+                                                            <div class="client-logo me-3">AC</div>
+                                                            <div>
+                                                                <div class="fw-bold">Acme Corporation</div>
+                                                                <div class="text-muted small">acmecorp.com</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td>Security Checker</td>
+                                                    <td>
+                                                        <a href="#" target="_blank">
+                                                            acme-corp.yourscannerdomain.com
+                                                        </a>
+                                                    </td>
+                                                    <td><span class="badge bg-success">Deployed</span></td>
+                                                    <td>May 1, 2025</td>
+                                                    <td>
+                                                        <div class="d-flex">
+                                                            <button class="client-action" data-bs-toggle="tooltip" title="View Scanner">
+                                                                <i class="bi bi-eye"></i>
+                                                            </button>
+                                                            <button class="client-action" data-bs-toggle="tooltip" title="Edit Scanner">
+                                                                <i class="bi bi-pencil"></i>
+                                                            </button>
+                                                            <button class="client-action" data-bs-toggle="tooltip" title="Scanner Stats">
+                                                                <i class="bi bi-graph-up"></i>
+                                                            </button>
+                                                            <button class="client-action" data-bs-toggle="tooltip" title="More Options">
+                                                                <i class="bi bi-three-dots-vertical"></i>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Clients & Activity -->
+                <div class="row g-4 mb-4">
+                    <div class="col-md-7">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Recent Clients</h5>
+                                <a href="/admin/clients" class="btn btn-sm btn-outline-primary">View All</a>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Company</th>
+                                                <th>Scanner</th>
+                                                <th>Subscription</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% if recent_clients %}
+                                                {% for client in recent_clients %}
+                                                <tr>
+                                                    <td>{{ client.company_name }}</td>
+                                                    <td>{{ client.scanner_name }}</td>
+                                                    <td>
+                                                        <span class="subscription-badge subscription-{{ client.subscription|lower }}">
+                                                            {{ client.subscription }}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge {{ 'bg-success' if client.status == 'Active' else 'bg-warning text-dark' }}">
+                                                            {{ client.status }}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <td>Acme Corp</td>
+                                                    <td>Security Checker</td>
+                                                    <td><span class="subscription-badge subscription-pro">Pro</span></td>
+                                                    <td><span class="badge bg-success">Active</span></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TechFlow Solutions</td>
+                                                    <td>TF Security Scanner</td>
+                                                    <td><span class="subscription-badge subscription-basic">Basic</span></td>
+                                                    <td><span class="badge bg-success">Active</span></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Global Innovations</td>
+                                                    <td>Security First</td>
+                                                    <td><span class="subscription-badge subscription-enterprise">Enterprise</span></td>
+                                                    <td><span class="badge bg-success">Active</span></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Stellar Services</td>
+                                                    <td>Stellar Secure</td>
+                                                    <td><span class="subscription-badge subscription-basic">Basic</span></td>
+                                                    <td><span class="badge bg-warning text-dark">Pending</span></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Quantum Data</td>
+                                                    <td>Quantum Security</td>
+                                                    <td><span class="subscription-badge subscription-pro">Pro</span></td>
+                                                    <td><span class="badge bg-success">Active</span></td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-5">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0">Recent Activity</h5>
+                            </div>
+                            <div class="card-body p-0">
+                                {% if recent_activities %}
+                                    {% for activity in recent_activities %}
+                                    <div class="activity-item">
+                                        <div class="activity-icon">
+                                            <i class="bi {{ activity.icon_class }}"></i>
+                                        </div>
+                                        <div class="activity-content">
+                                            <div>{{ activity.content|safe }}</div>
+                                            <div class="activity-time">{{ activity.time }}</div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="activity-item">
+                                        <div class="activity-icon">
+                                            <i class="bi bi-plus-circle text-success"></i>
+                                        </div>
+                                        <div class="activity-content">
+                                            <div>New client <strong>Stellar Services</strong> registered</div>
+                                            <div class="activity-time">2 hours ago</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="activity-item">
+                                        <div class="activity-icon">
+                                            <i class="bi bi-credit-card text-primary"></i>
+                                        </div>
+                                        <div class="activity-content">
+                                            <div><strong>Acme Corp</strong> upgraded to Pro plan</div>
+                                            <div class="activity-time">5 hours ago</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="activity-item">
+                                        <div class="activity-icon">
+                                            <i class="bi bi-search text-info"></i>
+                                        </div>
+                                        <div class="activity-content">
+                                            <div>50 new scans completed for <strong>Global Innovations</strong></div>
+                                            <div class="activity-time">Yesterday</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="activity-item">
+                                        <div class="activity-icon">
+                                            <i class="bi bi-globe2 text-warning"></i>
+                                        </div>
+                                        <div class="activity-content">
+                                            <div>New scanner deployed for <strong>TechFlow Solutions</strong></div>
+                                            <div class="activity-time">Yesterday</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="activity-item">
+                                        <div class="activity-icon">
+                                            <i class="bi bi-gear text-secondary"></i>
+                                        </div>
+                                        <div class="activity-content">
+                                            <div>System maintenance completed</div>
+                                            <div class="activity-time">2 days ago</div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        
-        <nav className="flex-1 p-4">
-          <a href="/admin/dashboard" 
-             className={`flex items-center p-3 mb-2 rounded transition-all hover:bg-gray-800 ${activeLink === 'dashboard' ? 'bg-gray-800' : 'text-gray-400'}`}
-             onClick={() => setActiveLink('dashboard')}>
-            <BarChart2 className="mr-3 h-5 w-5" />
-            Dashboard
-          </a>
-          
-          <a href="/admin/clients" 
-             className={`flex items-center p-3 mb-2 rounded transition-all hover:bg-gray-800 ${activeLink === 'clients' ? 'bg-gray-800' : 'text-gray-400'}`}
-             onClick={() => setActiveLink('clients')}>
-            <Users className="mr-3 h-5 w-5" />
-            Client Management
-          </a>
-          
-          <a href="/admin/users" 
-             className={`flex items-center p-3 mb-2 rounded transition-all hover:bg-gray-800 ${activeLink === 'users' ? 'bg-gray-800' : 'text-gray-400'}`}
-             onClick={() => setActiveLink('users')}>
-            <Users className="mr-3 h-5 w-5" />
-            User Management
-          </a>
-          
-          <a href="/customize" 
-             className={`flex items-center p-3 mb-2 rounded transition-all hover:bg-gray-800 ${activeLink === 'create' ? 'bg-gray-800' : 'text-gray-400'}`}
-             onClick={() => setActiveLink('create')}>
-            <PlusCircle className="mr-3 h-5 w-5" />
-            Create Scanner
-          </a>
-          
-          <a href="/admin/scanners" 
-             className={`flex items-center p-3 mb-2 rounded transition-all hover:bg-gray-800 ${activeLink === 'scanners' ? 'bg-gray-800' : 'text-gray-400'}`}
-             onClick={() => setActiveLink('scanners')}>
-            <Shield className="mr-3 h-5 w-5" />
-            Scanner Management
-          </a>
-          
-          <a href="/admin/subscriptions" 
-             className={`flex items-center p-3 mb-2 rounded transition-all hover:bg-gray-800 ${activeLink === 'subscriptions' ? 'bg-gray-800' : 'text-gray-400'}`}
-             onClick={() => setActiveLink('subscriptions')}>
-            <CreditCard className="mr-3 h-5 w-5" />
-            Subscriptions
-          </a>
-          
-          <a href="/admin/reports" 
-             className={`flex items-center p-3 mb-2 rounded transition-all hover:bg-gray-800 ${activeLink === 'reports' ? 'bg-gray-800' : 'text-gray-400'}`}
-             onClick={() => setActiveLink('reports')}>
-            <FileText className="mr-3 h-5 w-5" />
-            Reports
-          </a>
-          
-          <a href="/admin/settings" 
-             className={`flex items-center p-3 mb-2 rounded transition-all hover:bg-gray-800 ${activeLink === 'settings' ? 'bg-gray-800' : 'text-gray-400'}`}
-             onClick={() => setActiveLink('settings')}>
-            <Settings className="mr-3 h-5 w-5" />
-            Settings
-          </a>
-          
-          <div className="border-t border-gray-800 my-4"></div>
-          
-          <a href="/auth/logout" className="flex items-center p-3 mb-2 rounded text-red-400 transition-all hover:bg-gray-800">
-            <LogOut className="mr-3 h-5 w-5" />
-            Logout
-          </a>
-        </nav>
-      </div>
-      
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
-        <header className="bg-white shadow p-4 flex justify-between items-center">
-          <h2 className="text-2xl font-bold">Dashboard</h2>
-          <div className="flex items-center">
-            <div className="relative mr-4">
-              <Bell className="h-6 w-6 text-gray-500 cursor-pointer hover:text-gray-700" />
-              <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500"></span>
-            </div>
-            <span className="badge bg-primary mr-2 px-2 py-1 rounded text-xs text-white bg-blue-500">Admin</span>
-            <img src="/api/placeholder/36/36" className="rounded-full" alt="Admin" />
-          </div>
-        </header>
-        
-        <main className="p-6">
-          {/* Stats Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-            <div className="bg-white rounded-lg shadow p-5 transform transition-all hover:-translate-y-1 hover:shadow-lg">
-              <div className="flex items-center mb-3">
-                <div className="bg-blue-100 p-3 rounded mr-3">
-                  <Users className="text-blue-500" />
-                </div>
-                <h6 className="font-medium">Total Clients</h6>
-              </div>
-              <div className="text-4xl font-bold">{stats.totalClients}</div>
-              <p className="text-green-500 flex items-center mt-1">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
-                </svg>
-                12% increase
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow p-5 transform transition-all hover:-translate-y-1 hover:shadow-lg">
-              <div className="flex items-center mb-3">
-                <div className="bg-green-100 p-3 rounded mr-3">
-                  <Search className="text-green-500" />
-                </div>
-                <h6 className="font-medium">Active Scans</h6>
-              </div>
-              <div className="text-4xl font-bold">{stats.activeScans}</div>
-              <p className="text-green-500 flex items-center mt-1">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
-                </svg>
-                8% increase
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow p-5 transform transition-all hover:-translate-y-1 hover:shadow-lg">
-              <div className="flex items-center mb-3">
-                <div className="bg-yellow-100 p-3 rounded mr-3">
-                  <CreditCard className="text-yellow-500" />
-                </div>
-                <h6 className="font-medium">Monthly Revenue</h6>
-              </div>
-              <div className="text-4xl font-bold">${stats.monthlyRevenue}</div>
-              <p className="text-green-500 flex items-center mt-1">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
-                </svg>
-                15% increase
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow p-5 transform transition-all hover:-translate-y-1 hover:shadow-lg">
-              <div className="flex items-center mb-3">
-                <div className="bg-blue-100 p-3 rounded mr-3">
-                  <Shield className="text-blue-500" />
-                </div>
-                <h6 className="font-medium">Deployed Scanners</h6>
-              </div>
-              <div className="text-4xl font-bold">{stats.deployedScanners}</div>
-              <p className="text-green-500 flex items-center mt-1">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
-                </svg>
-                5% increase
-              </p>
-            </div>
-          </div>
-          
-          {/* New Clients Section */}
-          <div className="bg-white rounded-lg shadow mb-6">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h5 className="text-lg font-medium">New Clients</h5>
-              <a href="/admin/clients" className="text-blue-500 hover:text-blue-700 text-sm flex items-center">
-                View All Clients
-              </a>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {recentClients.map((client) => (
-                    <tr key={client.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="bg-gray-100 text-gray-700 h-10 w-10 rounded-lg flex items-center justify-center mr-3">
-                            {getInitials(client.business_name)}
-                          </div>
-                          <div>
-                            <div className="font-medium text-gray-900">{client.business_name}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {client.business_domain}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {client.contact_email}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {client.created_at}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex space-x-2">
-                          <a href={`/admin/clients/${client.id}/view`} className="text-gray-500 hover:text-gray-900 p-1">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                            </svg>
-                          </a>
-                          <a href={`/admin/clients/${client.id}/edit`} className="text-gray-500 hover:text-gray-900 p-1">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                            </svg>
-                          </a>
-                          <a href={`/admin/scanners?client_id=${client.id}`} className="text-gray-500 hover:text-gray-900 p-1">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-                            </svg>
-                          </a>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          
-          {/* Recent Activity Feed */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2">
-              <div className="bg-white rounded-lg shadow">
-                <div className="flex justify-between items-center p-4 border-b">
-                  <h5 className="text-lg font-medium">Active Scanner Systems</h5>
-                </div>
-                <div className="p-4">
-                  <div className="space-y-4">
-                    {/* Scanner systems would be listed here */}
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                      <div className="flex items-center">
-                        <div className="bg-green-100 p-2 rounded mr-3">
-                          <Shield className="text-green-500 h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="font-medium">Security Checker</div>
-                          <div className="text-sm text-gray-500">Acme Corp</div>
-                        </div>
-                      </div>
-                      <div>
-                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Active</span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                      <div className="flex items-center">
-                        <div className="bg-green-100 p-2 rounded mr-3">
-                          <Shield className="text-green-500 h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="font-medium">TF Security Scanner</div>
-                          <div className="text-sm text-gray-500">TechFlow Solutions</div>
-                        </div>
-                      </div>
-                      <div>
-                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Active</span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                      <div className="flex items-center">
-                        <div className="bg-green-100 p-2 rounded mr-3">
-                          <Shield className="text-green-500 h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="font-medium">Security First</div>
-                          <div className="text-sm text-gray-500">Global Innovations</div>
-                        </div>
-                      </div>
-                      <div>
-                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Active</span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                      <div className="flex items-center">
-                        <div className="bg-yellow-100 p-2 rounded mr-3">
-                          <AlertCircle className="text-yellow-500 h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="font-medium">Stellar Secure</div>
-                          <div className="text-sm text-gray-500">Stellar Services</div>
-                        </div>
-                      </div>
-                      <div>
-                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">Pending</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="bg-white rounded-lg shadow">
-                <div className="p-4 border-b">
-                  <h5 className="text-lg font-medium">Recent Activity</h5>
-                </div>
-                <div className="p-0">
-                  <div className="activity-item p-4 border-b">
-                    <div className="flex">
-                      <div className="bg-green-100 p-2 rounded-full h-10 w-10 flex items-center justify-center mr-3">
-                        <PlusCircle className="text-green-500 h-5 w-5" />
-                      </div>
-                      <div className="flex-1">
-                        <div>New client <strong>Stellar Services</strong> registered</div>
-                        <div className="text-sm text-gray-500">2 hours ago</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="activity-item p-4 border-b">
-                    <div className="flex">
-                      <div className="bg-blue-100 p-2 rounded-full h-10 w-10 flex items-center justify-center mr-3">
-                        <CreditCard className="text-blue-500 h-5 w-5" />
-                      </div>
-                      <div className="flex-1">
-                        <div><strong>Acme Corp</strong> upgraded to Pro plan</div>
-                        <div className="text-sm text-gray-500">5 hours ago</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="activity-item p-4 border-b">
-                    <div className="flex">
-                      <div className="bg-blue-100 p-2 rounded-full h-10 w-10 flex items-center justify-center mr-3">
-                        <Search className="text-blue-500 h-5 w-5" />
-                      </div>
-                      <div className="flex-1">
-                        <div>50 new scans completed for <strong>Global Innovations</strong></div>
-                        <div className="text-sm text-gray-500">Yesterday</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="activity-item p-4">
-                    <div className="flex">
-                      <div className="bg-yellow-100 p-2 rounded-full h-10 w-10 flex items-center justify-center mr-3">
-                        <Shield className="text-yellow-500 h-5 w-5" />
-                      </div>
-                      <div className="flex-1">
-                        <div>New scanner deployed for <strong>TechFlow Solutions</strong></div>
-                        <div className="text-sm text-gray-500">Yesterday</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
     </div>
-  );
-};
+    
+    <!-- Scanner Options Modal -->
+    <div class="modal fade" id="scannerOptionsModal" tabindex="-1" aria-labelledby="scannerOptionsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="scannerOptionsModalLabel">Scanner Options</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="list-group">
+                        <a href="#" class="list-group-item list-group-item-action" id="viewScannerLink">
+                            <i class="bi bi-eye me-2"></i> View Scanner Interface
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" id="editScannerLink">
+                            <i class="bi bi-pencil me-2"></i> Edit Scanner Configuration
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" id="regenerateApiKeyLink">
+                            <i class="bi bi-key me-2"></i> Regenerate API Key
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" id="scanHistoryLink">
+                            <i class="bi bi-clock-history me-2"></i> View Scan History
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" id="downloadConfigLink">
+                            <i class="bi bi-download me-2"></i> Download Scanner Configuration
+                        </a>
+                        <button class="list-group-item list-group-item-action text-danger" id="deactivateScannerBtn">
+                            <i class="bi bi-slash-circle me-2"></i> Deactivate Scanner
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+            
+            // Set up scanner options modal links
+            document.querySelectorAll('[data-bs-target="#scannerOptionsModal"]').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const scannerId = this.getAttribute('data-scanner-id');
+                    document.getElementById('viewScannerLink').href = `/admin/scanners/${scannerId}/view`;
+                    document.getElementById('editScannerLink').href = `/admin/scanners/${scannerId}/edit`;
+                    document.getElementById('scanHistoryLink').href = `/admin/scanners/${scannerId}/stats`;
+                    document.getElementById('downloadConfigLink').href = `/admin/scanners/${scannerId}/download-config`;
+                    document.getElementById('regenerateApiKeyLink').onclick = function() {
+                        // Hide scanner options modal and show regenerate API key modal (not implemented here)
+                        bootstrap.Modal.getInstance(document.getElementById('scannerOptionsModal')).hide();
+                        // Could show a custom modal for API key regeneration here
+                        alert('API Key regeneration would be triggered here');
+                    };
+                });
+            });
 
-export default AdminDashboard;
+            // User Activity Chart
+            const userActivityCtx = document.getElementById('userActivityChart').getContext('2d');
+            const userActivityChart = new Chart(userActivityCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Today', 'This Week', 'This Month'],
+                    datasets: [{
+                        label: 'Logins',
+                        data: [15, 78, 342],
+                        backgroundColor: [
+                            'rgba(255, 105, 0, 0.6)',
+                            'rgba(255, 105, 0, 0.4)',
+                            'rgba(255, 105, 0, 0.2)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 105, 0, 1)',
+                            'rgba(255, 105, 0, 1)',
+                            'rgba(255, 105, 0, 1)'
+                        ],
+                        borderWidth: 1
+                    }, {
+                        label: 'New Users',
+                        data: [0, 5, 16],
+                        backgroundColor: [
+                            'rgba(52, 152, 219, 0.6)',
+                            'rgba(52, 152, 219, 0.4)',
+                            'rgba(52, 152, 219, 0.2)'
+                        ],
+                        borderColor: [
+                            'rgba(52, 152, 219, 1)',
+                            'rgba(52, 152, 219, 1)',
+                            'rgba(52, 152, 219, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                drawBorder: false
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // User Distribution Chart
+            const userDistributionCtx = document.getElementById('userDistributionChart').getContext('2d');
+            const userDistributionChart = new Chart(userDistributionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Admin', 'Client'],
+                    datasets: [{
+                        data: [5, 37],
+                        backgroundColor: [
+                            'rgba(52, 152, 219, 0.8)',
+                            'rgba(255, 105, 0, 0.8)'
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Scan Activity Chart
+            const scanCtx = document.getElementById('scanActivityChart')?.getContext('2d');
+            if (scanCtx) {
+                const scanActivityChart = new Chart(scanCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                        datasets: [{
+                            label: 'Scans',
+                            data: [150, 210, 180, 250, 300, 320],
+                            borderColor: '#FF6900',
+                            backgroundColor: 'rgba(255, 105, 0, 0.1)',
+                            tension: 0.3,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    drawBorder: false
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Subscription Distribution Chart
+            const subCtx = document.getElementById('subscriptionChart')?.getContext('2d');
+            if (subCtx) {
+                const subscriptionChart = new Chart(subCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Basic', 'Pro', 'Enterprise'],
+                        datasets: [{
+                            data: [20, 15, 7],
+                            backgroundColor: ['#6c757d', '#FF6900', '#28a745'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '70%',
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Handle deactivate scanner button
+            document.getElementById('deactivateScannerBtn')?.addEventListener('click', function() {
+                const scannerId = document.getElementById('viewScannerLink').href.split('/').pop();
+                if (confirm("Are you sure you want to deactivate this scanner? This will make it inaccessible to users.")) {
+                    // In a real implementation, you would submit a form or make an AJAX request here
+                    alert(`Scanner ${scannerId} would be deactivated here`);
+                    bootstrap.Modal.getInstance(document.getElementById('scannerOptionsModal')).hide();
+                }
+            });
+
+            // Function to load login statistics from API
+            function fetchLoginStats() {
+                // This would be an actual API call in a real implementation
+                // For demo, we're using the data already in the charts
+                console.log("Fetching login statistics...");
+                
+                // If you have a real API endpoint, uncomment this code:
+                /*
+                fetch('/auth/api/login-stats')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // Update charts with real data
+                            // ...
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching login statistics:', error);
+                    });
+                */
+            }
+            
+            // Call fetchLoginStats when page loads
+            fetchLoginStats();
+        });
+    </script>
+</body>
+</html>
