@@ -53,7 +53,12 @@ def dashboard(user):
         
         # Get recent clients with proper parameters
         # Removed sort_by parameter that was causing an error
-        recent_clients_result = list_clients(cursor, page=1, per_page=5)['clients']
+        recent_clients_result = list_clients(cursor, page=1, per_page=5)
+        if recent_clients_result and 'clients' in recent_clients_result:
+            recent_clients = recent_clients_result['clients']
+        else:
+            # Handle the case where 'clients' key is missing
+            recent_clients = []
         
         # Close the connection
         conn.close()
