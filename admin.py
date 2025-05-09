@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import os
 import logging
 from datetime import datetime, timedelta
-
+from client_db import get_db_connection, get_dashboard_summary
 # Import authentication utilities
 from auth_utils import verify_session
 
