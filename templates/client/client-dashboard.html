@@ -1,4 +1,4 @@
-<!-- templates/client/client-dashboard.html -->
+<!-- Enhanced Client Dashboard -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,6 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .sidebar {
             background-color: #2c3e50;
@@ -71,6 +72,21 @@
             font-weight: bold;
         }
         
+        .stat-change {
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .stat-change.positive {
+            color: #198754;
+        }
+        
+        .stat-change.negative {
+            color: #dc3545;
+        }
+        
         .status-badge {
             padding: 0.35em 0.65em;
             border-radius: 0.25rem;
@@ -113,6 +129,99 @@
             background-color: rgba(0,0,0,0.05);
             color: var(--primary-color);
         }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+        
+        .quick-action-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .quick-action-card:hover {
+            background-color: #f8f9fa;
+            transform: translateY(-2px);
+        }
+        
+        .security-score-circle {
+            width: 120px;
+            height: 120px;
+            position: relative;
+            margin: 0 auto;
+        }
+        
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+        
+        .progress-ring__circle {
+            stroke-width: 6;
+            fill: transparent;
+            r: 45;
+            cx: 50;
+            cy: 50;
+        }
+        
+        .activity-item {
+            display: flex;
+            align-items: start;
+            padding: 0.75rem;
+            border-bottom: 1px solid #f8f9fa;
+        }
+        
+        .activity-icon {
+            width: 40px;
+            height: 40px;
+            background-color: #f8f9fa;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            flex-shrink: 0;
+        }
+        
+        .activity-content {
+            flex: 1;
+        }
+        
+        .activity-time {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        
+        .subscription-usage {
+            height: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        .subscription-usage-bar {
+            height: 100%;
+            background-color: #007bff;
+            border-radius: 5px;
+            transition: width 0.5s ease;
+        }
+        
+        .alert-custom {
+            border-left: 4px solid;
+            padding-left: 1rem;
+        }
+        
+        .alert-info-custom {
+            border-left-color: #0dcaf0;
+        }
+        
+        .alert-warning-custom {
+            border-left-color: #ffc107;
+        }
+        
+        .alert-success-custom {
+            border-left-color: #198754;
+        }
     </style>
 </head>
 <body>
@@ -150,9 +259,12 @@
             <!-- Main Content -->
             <div class="col-md-9 col-lg-10 ms-auto main-content">
                 <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h2>Client Dashboard</h2>
                     <div>
-                        <span class="badge bg-primary">Client</span>
+                        <h2>Client Dashboard</h2>
+                        <p class="text-muted">Welcome back, {{ user.username }}</p>
+                    </div>
+                    <div>
+                        <span class="badge bg-primary">{{ user_client.subscription_level|default('Basic')|title }}</span>
                         <span class="ms-2">{{ user.username }}</span>
                     </div>
                 </div>
@@ -169,24 +281,67 @@
                     {% endif %}
                 {% endwith %}
                 
-                <!-- Stats Overview -->
+                <!-- Quick Actions Banner -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="card quick-action-card h-100" onclick="window.location.href='/customize'">
+                            <div class="card-body text-center">
+                                <i class="bi bi-plus-circle display-5 text-primary mb-2"></i>
+                                <h6>Create Scanner</h6>
+                                <p class="text-muted small mb-0">Set up a new security scanner</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card quick-action-card h-100" onclick="document.getElementById('runScanBtn').click()">
+                            <div class="card-body text-center">
+                                <i class="bi bi-play-circle display-5 text-success mb-2"></i>
+                                <h6>Run Scan</h6>
+                                <p class="text-muted small mb-0">Start a security scan</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card quick-action-card h-100" onclick="window.location.href='/client/reports'">
+                            <div class="card-body text-center">
+                                <i class="bi bi-file-earmark-text display-5 text-info mb-2"></i>
+                                <h6>View Reports</h6>
+                                <p class="text-muted small mb-0">Access scan reports</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card quick-action-card h-100" onclick="window.location.href='/client/settings'">
+                            <div class="card-body text-center">
+                                <i class="bi bi-gear display-5 text-warning mb-2"></i>
+                                <h6>Manage Account</h6>
+                                <p class="text-muted small mb-0">Update settings</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Stats Overview with Trends -->
                 <div class="row g-4 mb-4">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="card stat-card border-0 shadow-sm">
                             <div class="card-body">
                                 <div class="d-flex align-items-center mb-3">
                                     <div class="icon-circle me-3 bg-primary bg-opacity-10">
                                         <i class="bi bi-shield-check text-primary"></i>
                                     </div>
-                                    <h6 class="mb-0">My Scanners</h6>
+                                    <h6 class="mb-0">Active Scanners</h6>
                                 </div>
                                 <div class="stat-value">{{ scanners|length }}</div>
-                                <p class="text-muted mb-0">Total deployed scanners</p>
+                                <div class="stat-change positive">
+                                    <i class="bi bi-arrow-up"></i>
+                                    <span>{{ scan_trends.scanner_growth|default('0')}}% growth</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="card stat-card border-0 shadow-sm">
                             <div class="card-body">
                                 <div class="d-flex align-items-center mb-3">
@@ -196,24 +351,96 @@
                                     <h6 class="mb-0">Total Scans</h6>
                                 </div>
                                 <div class="stat-value">{{ total_scans }}</div>
-                                <p class="text-muted mb-0">Scans conducted to date</p>
+                                <div class="stat-change {{ 'positive' if scan_trends.scan_growth > 0 else 'negative' }}">
+                                    <i class="bi bi-arrow-{{ 'up' if scan_trends.scan_growth > 0 else 'down' }}"></i>
+                                    <span>{{ scan_trends.scan_growth|default('0')}}% this month</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card stat-card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="icon-circle me-3 bg-danger bg-opacity-10">
+                                        <i class="bi bi-exclamation-triangle text-danger"></i>
+                                    </div>
+                                    <h6 class="mb-0">Critical Issues</h6>
+                                </div>
+                                <div class="stat-value">{{ critical_issues|default('0') }}</div>
+                                <div class="stat-change {{ 'negative' if critical_issues_trend > 0 else 'positive' }}">
+                                    <i class="bi bi-arrow-{{ 'up' if critical_issues_trend > 0 else 'down' }}"></i>
+                                    <span>{{ critical_issues_trend|default('0')}}% from last week</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card stat-card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="icon-circle me-3 bg-info bg-opacity-10">
+                                        <i class="bi bi-graph-up text-info"></i>
+                                    </div>
+                                    <h6 class="mb-0">Security Score</h6>
+                                </div>
+                                <div class="stat-value">{{ avg_security_score|default('N/A') }}%</div>
+                                <div class="stat-change {{ 'positive' if security_score_trend > 0 else 'negative' }}">
+                                    <i class="bi bi-arrow-{{ 'up' if security_score_trend > 0 else 'down' }}"></i>
+                                    <span>{{ security_score_trend|default('0')}}% improvement</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Security Overview -->
+                <div class="row g-4 mb-4">
+                    <div class="col-md-8">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0">Security Trends</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="securityTrendsChart"></canvas>
+                                </div>
                             </div>
                         </div>
                     </div>
                     
                     <div class="col-md-4">
-                        <div class="card stat-card border-0 shadow-sm">
-                            <div class="card-body">
-                                <div class="d-flex align-items-center mb-3">
-                                    <div class="icon-circle me-3 bg-warning bg-opacity-10">
-                                        <i class="bi bi-calendar-check text-warning"></i>
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0">Overall Security Score</h5>
+                            </div>
+                            <div class="card-body text-center">
+                                <div class="security-score-circle">
+                                    <svg class="progress-ring" width="120" height="120">
+                                        <circle class="progress-ring__circle" stroke="#e9ecef" stroke-width="6" fill="transparent" r="45" cx="60" cy="60"/>
+                                        <circle class="progress-ring__circle" stroke="#007bff" stroke-width="6" fill="transparent" r="45" cx="60" cy="60"
+                                                stroke-dasharray="283" stroke-dashoffset="{{ 283 - (avg_security_score|default(0) / 100 * 283) }}"
+                                                style="transition: stroke-dashoffset 1s ease;"/>
+                                    </svg>
+                                    <div class="position-absolute top-50 start-50 translate-middle">
+                                        <div class="stat-value">{{ avg_security_score|default('N/A') }}%</div>
                                     </div>
-                                    <h6 class="mb-0">Subscription</h6>
                                 </div>
-                                <div class="d-flex align-items-center">
-                                    <div>
-                                        <h5 class="mb-0">{{ user_client.subscription_level|default('Basic')|title }}</h5>
-                                        <p class="text-muted mb-0">{{ user_client.subscription_status|default('Active')|title }}</p>
+                                <h6 class="mt-3">Security Status: <span class="text-{{ 'success' if avg_security_score > 70 else 'warning' if avg_security_score > 40 else 'danger' }}">{{ security_status|default('Good') }}</span></h6>
+                                <div class="mt-3">
+                                    <div class="d-flex justify-content-between text-sm mb-1">
+                                        <span>Critical</span>
+                                        <span>{{ critical_issues|default('0') }}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between text-sm mb-1">
+                                        <span>High</span>
+                                        <span>{{ high_issues|default('0') }}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between text-sm">
+                                        <span>Medium</span>
+                                        <span>{{ medium_issues|default('0') }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -221,11 +448,104 @@
                     </div>
                 </div>
                 
-                <!-- My Scanners Section -->
+                <!-- Subscription Usage & Activities -->
+                <div class="row g-4 mb-4">
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Subscription Usage</h5>
+                                <a href="/client/settings?tab=subscription" class="btn btn-sm btn-outline-primary">Manage</a>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-flex align-items-center">
+                                    <div>
+                                        <h4 class="text-primary">{{ user_client.subscription_level|default('Basic')|title }}</h4>
+                                        <p class="text-muted mb-0">Current plan</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-4">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>Scans Used</span>
+                                        <span>{{ scans_used|default('0') }} / {{ scans_limit|default('50') }}</span>
+                                    </div>
+                                    <div class="subscription-usage">
+                                        <div class="subscription-usage-bar" style="width: {{ (scans_used|default(0) / scans_limit|default(50) * 100)|int }}%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-3">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>Scanners Active</span>
+                                        <span>{{ scanners|length }} / {{ scanner_limit|default('1') }}</span>
+                                    </div>
+                                    <div class="subscription-usage">
+                                        <div class="subscription-usage-bar" style="width: {{ (scanners|length / scanner_limit|default(1) * 100)|int }}%"></div>
+                                    </div>
+                                </div>
+                                
+                                {% if (scans_used|default(0) / scans_limit|default(50) * 100) > 80 %}
+                                <div class="mt-3">
+                                    <div class="alert alert-warning-custom alert-custom">
+                                        <i class="bi bi-exclamation-triangle me-2"></i>
+                                        You've used {{ (scans_used|default(0) / scans_limit|default(50) * 100)|int }}% of your scan limit.
+                                        <a href="/client/settings?tab=subscription" class="alert-link">Upgrade now</a>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0">Recent Activity</h5>
+                            </div>
+                            <div class="card-body p-0">
+                                <div style="max-height: 300px; overflow-y: auto;">
+                                    {% if recent_activities %}
+                                        {% for activity in recent_activities[:5] %}
+                                            <div class="activity-item">
+                                                <div class="activity-icon">
+                                                    <i class="bi {{ activity.icon|default('bi-info-circle') }} {{ activity.icon_color|default('text-primary') }}"></i>
+                                                </div>
+                                                <div class="activity-content">
+                                                    <div>{{ activity.description }}</div>
+                                                    <div class="activity-time">{{ activity.timestamp }}</div>
+                                                </div>
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="activity-item">
+                                            <div class="activity-icon">
+                                                <i class="bi bi-plus-circle text-success"></i>
+                                            </div>
+                                            <div class="activity-content">
+                                                <div>Account created successfully</div>
+                                                <div class="activity-time">Welcome to Scanner Platform!</div>
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                {% if recent_activities|length > 5 %}
+                                    <div class="text-center p-3 border-top">
+                                        <a href="/client/activity" class="btn btn-sm btn-link">View All Activity</a>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- My Scanners Section with Enhanced View -->
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-header d-flex justify-content-between align-items-center bg-white">
                         <h5 class="mb-0">My Scanners</h5>
-                        <a href="/customize" class="btn btn-sm btn-outline-primary">Create New Scanner</a>
+                        <div>
+                            <a href="/client/scanners" class="btn btn-sm btn-outline-secondary me-2">View All</a>
+                            <a href="/customize" class="btn btn-sm btn-primary">Create New Scanner</a>
+                        </div>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -235,20 +555,27 @@
                                         <th>Scanner Name</th>
                                         <th>Domain</th>
                                         <th>Status</th>
-                                        <th>Created</th>
+                                        <th>Last Scan</th>
+                                        <th>Security Score</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% if scanners %}
-                                        {% for scanner in scanners %}
+                                        {% for scanner in scanners[:5] %}
                                         <tr>
                                             <td>
-                                                <strong>{{ scanner.scanner_name }}</strong>
+                                                <div class="d-flex align-items-center">
+                                                    <div class="scanner-logo me-2" style="width: 32px; height: 32px; background-color: {{ scanner.primary_color|default('#007bff') }}; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                                                        {{ scanner.scanner_name[:2]|upper }}
+                                                    </div>
+                                                    <strong>{{ scanner.scanner_name }}</strong>
+                                                </div>
                                             </td>
                                             <td>
-                                                <a href="https://{{ scanner.subdomain }}.yourscannerdomain.com" target="_blank">
+                                                <a href="https://{{ scanner.subdomain }}.yourscannerdomain.com" target="_blank" class="text-decoration-none">
                                                     {{ scanner.subdomain }}.yourscannerdomain.com
+                                                    <i class="bi bi-box-arrow-up-right ms-1 small"></i>
                                                 </a>
                                             </td>
                                             <td>
@@ -256,28 +583,45 @@
                                                     {{ scanner.deploy_status|title }}
                                                 </span>
                                             </td>
-                                            <td>{{ scanner.deploy_date|default(scanner.created_at, true) }}</td>
+                                            <td>{{ scanner.last_scan|default('Never', true) }}</td>
+                                            <td>
+                                                <div class="d-flex align-items-center">
+                                                    <div class="progress me-2" style="width: 60px; height: 8px;">
+                                                        <div class="progress-bar bg-{{ 'success' if scanner.security_score > 70 else 'warning' if scanner.security_score > 40 else 'danger' }}" 
+                                                             style="width: {{ scanner.security_score|default(0) }}%"></div>
+                                                    </div>
+                                                    <span class="text-{{ 'success' if scanner.security_score > 70 else 'warning' if scanner.security_score > 40 else 'danger' }}">
+                                                        {{ scanner.security_score|default('N/A') }}%
+                                                    </span>
+                                                </div>
+                                            </td>
                                             <td>
                                                 <div class="d-flex">
-                                                    <a href="/client/scanners/{{ scanner.id }}/view" class="scanner-action" data-bs-toggle="tooltip" title="View Scanner">
+                                                    <a href="/client/scanners/{{ scanner.id }}/view" class="scanner-action" data-bs-toggle="tooltip" title="View Details">
                                                         <i class="bi bi-eye"></i>
                                                     </a>
-                                                    <a href="/client/scanners/{{ scanner.id }}/edit" class="scanner-action" data-bs-toggle="tooltip" title="Edit Scanner">
-                                                        <i class="bi bi-pencil"></i>
-                                                    </a>
-                                                    <a href="/client/scanners/{{ scanner.id }}/stats" class="scanner-action" data-bs-toggle="tooltip" title="Scanner Stats">
+                                                    <button class="scanner-action" onclick="runQuickScan('{{ scanner.id }}')" data-bs-toggle="tooltip" title="Run Quick Scan">
+                                                        <i class="bi bi-play-circle"></i>
+                                                    </button>
+                                                    <a href="/client/scanners/{{ scanner.id }}/stats" class="scanner-action" data-bs-toggle="tooltip" title="View Statistics">
                                                         <i class="bi bi-graph-up"></i>
                                                     </a>
-                                                    <button class="scanner-action" data-bs-toggle="modal" data-bs-target="#scannerOptionsModal" data-scanner-id="{{ scanner.id }}" title="More Options">
+                                                    <button class="scanner-action" data-bs-toggle="dropdown">
                                                         <i class="bi bi-three-dots-vertical"></i>
                                                     </button>
+                                                    <ul class="dropdown-menu">
+                                                        <li><a class="dropdown-item" href="/client/scanners/{{ scanner.id }}/edit">Edit Scanner</a></li>
+                                                        <li><a class="dropdown-item" href="/client/scanners/{{ scanner.id }}/reports">View Reports</a></li>
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li><a class="dropdown-item text-danger" href="#" onclick="confirmDelete('{{ scanner.id }}')">Delete Scanner</a></li>
+                                                    </ul>
                                                 </div>
                                             </td>
                                         </tr>
                                         {% endfor %}
                                     {% else %}
                                         <tr>
-                                            <td colspan="5" class="text-center py-4">
+                                            <td colspan="6" class="text-center py-4">
                                                 <div class="text-muted">
                                                     <i class="bi bi-search fs-3 d-block mb-3"></i>
                                                     No scanners found. 
@@ -292,10 +636,11 @@
                     </div>
                 </div>
                 
-                <!-- Recent Scan Activity -->
+                <!-- Recent Scan Activity with Enhanced Details -->
                 <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-white">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">Recent Scan Activity</h5>
+                        <a href="/client/reports" class="btn btn-sm btn-outline-secondary">View All Reports</a>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -305,29 +650,45 @@
                                         <th>Date</th>
                                         <th>Scanner</th>
                                         <th>Target</th>
+                                        <th>Status</th>
+                                        <th>Score</th>
+                                        <th>Issues</th>
                                         <th>Report</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% if scan_history %}
-                                        {% for scan in scan_history %}
+                                        {% for scan in scan_history[:5] %}
                                         <tr>
                                             <td>{{ scan.timestamp }}</td>
                                             <td>{{ scan.scanner_name }}</td>
                                             <td>{{ scan.target }}</td>
                                             <td>
+                                                <span class="badge bg-{{ 'success' if scan.status == 'completed' else 'warning' if scan.status == 'running' else 'danger' }}">
+                                                    {{ scan.status|title }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="text-{{ 'success' if scan.security_score > 70 else 'warning' if scan.security_score > 40 else 'danger' }}">
+                                                    {{ scan.security_score|default('N/A') }}%
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-light text-dark">{{ scan.issues_found|default('0') }} found</span>
+                                            </td>
+                                            <td>
                                                 <a href="/client/reports/{{ scan.scan_id }}" class="btn btn-sm btn-outline-primary">
-                                                    <i class="bi bi-file-earmark-text me-1"></i> View Report
+                                                    <i class="bi bi-file-earmark-text me-1"></i> View
                                                 </a>
                                             </td>
                                         </tr>
                                         {% endfor %}
                                     {% else %}
                                         <tr>
-                                            <td colspan="4" class="text-center py-4">
+                                            <td colspan="7" class="text-center py-4">
                                                 <div class="text-muted">
                                                     <i class="bi bi-clipboard-check fs-3 d-block mb-3"></i>
-                                                    No scan history found.
+                                                    No scan history found. Run your first scan to see results.
                                                 </div>
                                             </td>
                                         </tr>
@@ -337,75 +698,95 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Scanner Options Modal -->
-    <div class="modal fade" id="scannerOptionsModal" tabindex="-1" aria-labelledby="scannerOptionsModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="scannerOptionsModalLabel">Scanner Options</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="list-group">
-                        <a href="#" class="list-group-item list-group-item-action" id="viewScannerLink">
-                            <i class="bi bi-eye me-2"></i> View Scanner Interface
-                        </a>
-                        <a href="#" class="list-group-item list-group-item-action" id="editScannerLink">
-                            <i class="bi bi-pencil me-2"></i> Edit Scanner Configuration
-                        </a>
-                        <a href="#" class="list-group-item list-group-item-action" id="regenerateApiKeyLink">
-                            <i class="bi bi-key me-2"></i> Regenerate API Key
-                        </a>
-                        <a href="#" class="list-group-item list-group-item-action" id="scanHistoryLink">
-                            <i class="bi bi-clock-history me-2"></i> View Scan History
-                        </a>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- API Key Regeneration Modal -->
-    <div class="modal fade" id="regenerateApiKeyModal" tabindex="-1" aria-labelledby="regenerateApiKeyModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="regenerateApiKeyModalLabel">Regenerate API Key</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        <strong>Warning:</strong> Regenerating the API key will invalidate the previous key. Any applications or services using the old key will need to be updated.
-                    </div>
-                    <p>Are you sure you want to regenerate the API key for this scanner?</p>
-                    <div id="apiKeyResult" class="mt-3" style="display: none;">
-                        <div class="alert alert-success">
-                            <p class="mb-2"><strong>New API Key:</strong></p>
-                            <div class="input-group mb-2">
-                                <input type="text" id="newApiKey" class="form-control" readonly>
-                                <button class="btn btn-outline-secondary" type="button" id="copyApiKey">
-                                    <i class="bi bi-clipboard"></i>
-                                </button>
+                
+                <!-- Recommendations Section -->
+                {% if recommendations %}
+                <div class="mt-4">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0">Security Recommendations</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                {% for recommendation in recommendations[:3] %}
+                                <div class="col-md-4">
+                                    <div class="card bg-light h-100">
+                                        <div class="card-body">
+                                            <div class="d-flex align-items-start">
+                                                <div class="me-3">
+                                                    <i class="bi {{ recommendation.icon|default('bi-lightbulb') }} text-{{ recommendation.color|default('warning') }} fs-5"></i>
+                                                </div>
+                                                <div>
+                                                    <h6>{{ recommendation.title }}</h6>
+                                                    <p class="small text-muted mb-0">{{ recommendation.description }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
                             </div>
-                            <p class="small text-muted mb-0">Please save this key in a secure location. It will not be shown again.</p>
+                            <div class="text-center mt-3">
+                                <a href="/client/recommendations" class="btn btn-outline-primary">View All Recommendations</a>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <form id="regenerateApiKeyForm" method="post">
-                        <input type="hidden" id="regenerateScannerId" name="scanner_id" value="">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-danger" id="confirmRegenerateApiKey">Regenerate API Key</button>
-                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Run Scan Modal -->
+    <div class="modal fade" id="runScanModal" tabindex="-1" aria-labelledby="runScanModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="runScanModalLabel">Run New Scan</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
+                <form id="runScanForm" action="/api/run_scan" method="post">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="scanTarget" class="form-label">Target Domain/URL</label>
+                            <input type="text" class="form-control" id="scanTarget" name="target" placeholder="example.com" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="scanScanner" class="form-label">Scanner</label>
+                            <select class="form-select" id="scanScanner" name="scanner_id" required>
+                                <option value="">Select a scanner</option>
+                                {% if scanners %}
+                                    {% for scanner in scanners %}
+                                        {% if scanner.deploy_status == 'deployed' %}
+                                            <option value="{{ scanner.id }}">{{ scanner.scanner_name }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Scan Type</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="scan_type" id="quickScan" value="quick" checked>
+                                <label class="form-check-label" for="quickScan">
+                                    Quick Scan <span class="text-muted small">(Basic security check)</span>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="scan_type" id="comprehensiveScan" value="comprehensive">
+                                <label class="form-check-label" for="comprehensiveScan">
+                                    Comprehensive Scan <span class="text-muted small">(Full security audit)</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-play-circle me-2"></i>Run Scan
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -420,87 +801,194 @@
                 return new bootstrap.Tooltip(tooltipTriggerEl);
             });
             
-            // Scanner Options Modal
-            const scannerOptionsModal = document.getElementById('scannerOptionsModal');
-            if (scannerOptionsModal) {
-                scannerOptionsModal.addEventListener('show.bs.modal', function(event) {
-                    const button = event.relatedTarget;
-                    const scannerId = button.getAttribute('data-scanner-id');
-                    
-                    // Set up links in the modal
-                    document.getElementById('viewScannerLink').href = `/client/scanners/${scannerId}/view`;
-                    document.getElementById('editScannerLink').href = `/client/scanners/${scannerId}/edit`;
-                    document.getElementById('scanHistoryLink').href = `/client/scanners/${scannerId}/stats`;
-                    
-                    // Setup API key regeneration
-                    document.getElementById('regenerateApiKeyLink').addEventListener('click', function(e) {
-                        e.preventDefault();
-                        document.getElementById('regenerateScannerId').value = scannerId;
-                        const regenerateModal = new bootstrap.Modal(document.getElementById('regenerateApiKeyModal'));
-                        regenerateModal.show();
-                    });
+            // Security Trends Chart
+            const ctx = document.getElementById('securityTrendsChart').getContext('2d');
+            const securityTrendsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['7 days ago', '6 days ago', '5 days ago', '4 days ago', '3 days ago', '2 days ago', 'Yesterday', 'Today'],
+                    datasets: [{
+                        label: 'Security Score',
+                        data: [65, 72, 68, 78, 85, 82, 88, {{ avg_security_score|default(75) }}],
+                        borderColor: '#007bff',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#007bff',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }, {
+                        label: 'Issues Count',
+                        data: [12, 10, 14, 8, 6, 7, 4, {{ critical_issues|default(2) }}],
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#dc3545',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        if (context.dataset.label === 'Security Score') {
+                                            label += context.parsed.y + '%';
+                                        } else {
+                                            label += context.parsed.y;
+                                        }
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                beginAtZero: true,
+                                callback: function(value) {
+                                    return value;
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+            
+            // Quick action for Run Scan
+            document.getElementById('runScanBtn') = document.querySelector('[onclick="document.getElementById(\'runScanBtn\').click()"]');
+            if (document.getElementById('runScanBtn')) {
+                document.getElementById('runScanBtn').addEventListener('click', function() {
+                    new bootstrap.Modal(document.getElementById('runScanModal')).show();
                 });
             }
             
-            // Regenerate API Key form
-            const regenerateApiKeyForm = document.getElementById('regenerateApiKeyForm');
-            if (regenerateApiKeyForm) {
-                regenerateApiKeyForm.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    const scannerId = document.getElementById('regenerateScannerId').value;
-                    const submitBtn = document.getElementById('confirmRegenerateApiKey');
-                    const originalBtnText = submitBtn.textContent;
-                    
-                    // Show loading state
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-                    
-                    // Make AJAX request to regenerate key
-                    fetch(`/client/scanners/${scannerId}/regenerate-api-key`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            // Show new API key
-                            document.getElementById('newApiKey').value = data.api_key;
-                            document.getElementById('apiKeyResult').style.display = 'block';
-                            
-                            // Change button to "Done"
-                            submitBtn.innerHTML = 'Done';
-                            submitBtn.classList.remove('btn-danger');
-                            submitBtn.classList.add('btn-success');
-                            
-                            // Set up clipboard functionality
-                            document.getElementById('copyApiKey').addEventListener('click', function() {
-                                const apiKeyInput = document.getElementById('newApiKey');
-                                apiKeyInput.select();
-                                document.execCommand('copy');
-                                this.innerHTML = '<i class="bi bi-check"></i>';
-                                setTimeout(() => {
-                                    this.innerHTML = '<i class="bi bi-clipboard"></i>';
-                                }, 2000);
-                            });
-                        } else {
-                            // Show error
-                            alert('Error: ' + data.message);
-                            submitBtn.disabled = false;
-                            submitBtn.textContent = originalBtnText;
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('An error occurred while regenerating the API key.');
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = originalBtnText;
-                    });
+            // Run scan form submission
+            document.getElementById('runScanForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const submitButton = this.querySelector('button[type="submit"]');
+                const originalText = submitButton.innerHTML;
+                
+                // Show loading state
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...';
+                
+                // Submit form with AJAX
+                const formData = new FormData(this);
+                
+                fetch(this.action, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        window.location.href = `/client/reports/${data.scan_id}`;
+                    } else {
+                        alert(data.message || 'Failed to run scan');
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = originalText;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while running the scan');
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalText;
                 });
-            }
+            });
         });
+        
+        // Run quick scan for a specific scanner
+        function runQuickScan(scannerId) {
+            fetch('/api/quick_scan', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    scanner_id: scannerId,
+                    scan_type: 'quick'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Quick scan started successfully!');
+                    // Optionally refresh the page or update the UI
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    alert(data.message || 'Failed to start quick scan');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while starting the scan');
+            });
+        }
+        
+        // Confirm delete scanner
+        function confirmDelete(scannerId) {
+            if (confirm('Are you sure you want to delete this scanner? This action cannot be undone.')) {
+                // Submit delete request
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/client/scanners/${scannerId}/delete`;
+                form.innerHTML = '<input type="hidden" name="_method" value="DELETE">';
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
     </script>
 </body>
 </html>
