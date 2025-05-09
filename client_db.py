@@ -452,6 +452,90 @@ def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=N
         }
 
 @with_transaction
+def get_dashboard_summary(conn, cursor=None):
+    """
+    Get dashboard summary statistics
+    
+    Args:
+        conn: Database connection (provided by with_transaction)
+        cursor: Database cursor (provided by with_transaction)
+        
+    Returns:
+        dict: Dashboard summary statistics
+    """
+    try:
+        # Get total clients count
+        cursor.execute("SELECT COUNT(*) FROM clients")
+        total_clients = cursor.fetchone()[0]
+        
+        # Get active clients count
+        cursor.execute("SELECT COUNT(*) FROM clients WHERE active = 1")
+        active_clients = cursor.fetchone()[0]
+        
+        # Get inactive clients count
+        cursor.execute("SELECT COUNT(*) FROM clients WHERE active = 0")
+        inactive_clients = cursor.fetchone()[0]
+        
+        # Get total scan count
+        try:
+            cursor.execute("SELECT COUNT(*) FROM scans")
+            total_scans = cursor.fetchone()[0]
+        except:
+            # Table might not exist
+            total_scans = 0
+        
+        # Get today's scan count
+        import datetime
+        today = datetime.date.today().isoformat()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM scans WHERE DATE(timestamp) = ?", (today,))
+            scans_today = cursor.fetchone()[0]
+        except:
+            scans_today = 0
+        
+        # Get total users count
+        cursor.execute("SELECT COUNT(*) FROM users")
+        total_users = cursor.fetchone()[0]
+        
+        # Get subscription distribution
+        try:
+            cursor.execute("""
+                SELECT subscription_level as subscription, COUNT(*) as count
+                FROM clients
+                GROUP BY subscription_level
+            """)
+            subscription_distribution = {}
+            for row in cursor.fetchall():
+                subscription_distribution[row[0]] = row[1]
+        except:
+            subscription_distribution = {"basic": 0, "pro": 0, "enterprise": 0}
+        
+        # Return summary data
+        return {
+            'total_clients': total_clients,
+            'active_clients': active_clients,
+            'inactive_clients': inactive_clients,
+            'total_scans': total_scans,
+            'scans_today': scans_today,
+            'total_users': total_users,
+            'subscription_distribution': subscription_distribution,
+            'deployed_scanners': active_clients  # Use active_clients as a proxy
+        }
+    except Exception as e:
+        logging.error(f"Error in get_dashboard_summary: {e}")
+        # Return default data on error
+        return {
+            'total_clients': 0,
+            'active_clients': 0,
+            'inactive_clients': 0,
+            'total_scans': 0,
+            'scans_today': 0,
+            'total_users': 0,
+            'subscription_distribution': {"basic": 0, "pro": 0, "enterprise": 0},
+            'deployed_scanners': 0
+        }
+
+@with_transaction
 def deactivate_client(conn, cursor, client_id, user_id=None):
     """
     Deactivate a client (soft delete)
