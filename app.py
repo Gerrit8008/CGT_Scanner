@@ -40,6 +40,7 @@ from auth_hotfix import register_auth_hotfix
 from emergency_access import emergency_bp
 from register_routes import register_all_routes
 from admin_fix_integration import apply_admin_fixes
+from admin_route_fix import apply_admin_route_fixes
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -3302,6 +3303,14 @@ def apply_route_fixes():
 
 if __name__ == "__main__":
     apply_route_fixes()
+
+# Apply the admin route fixes
+print("Applying admin route fixes...")
+success = apply_admin_route_fixes(app)
+if success:
+    print("Admin route fixes applied successfully!")
+else:
+    print("Failed to apply admin route fixes. Check the logs for details.")
     
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
