@@ -452,64 +452,75 @@ def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=N
         }
 
 @with_transaction
-def get_dashboard_summary(conn):
-    """Get summary statistics for the admin dashboard"""
-    cursor = conn.cursor()
+def get_dashboard_summary(cursor=None):
+    """
+    Get dashboard summary statistics
     
-    # Get total clients count
-    cursor.execute("SELECT COUNT(*) as total_clients FROM clients WHERE active = 1")
-    total_clients = cursor.fetchone()['total_clients']
+    Args:
+        cursor (sqlite3.Cursor, optional): Database cursor. If None, a new connection is created.
+        
+    Returns:
+        dict: Dashboard summary statistics
+    """
+    # Create connection and cursor if not provided
+    conn = None
+    close_conn = False
+    if cursor is None:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        close_conn = True
     
-    # Get new clients in the past 30 days
-    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
-    cursor.execute("SELECT COUNT(*) as new_clients FROM clients WHERE created_at > ? AND active = 1", (thirty_days_ago,))
-    new_clients = cursor.fetchone()['new_clients']
-    
-    # Get active scanners count
-    cursor.execute("SELECT COUNT(*) as active_scanners FROM deployed_scanners WHERE deploy_status = 'deployed'")
-    active_scanners = cursor.fetchone()['active_scanners']
-    
-    # Get total scans in the past 24 hours
-    twenty_four_hours_ago = (datetime.now() - timedelta(hours=24)).isoformat()
-    cursor.execute("SELECT COUNT(*) as daily_scans FROM scan_history WHERE timestamp > ?", (twenty_four_hours_ago,))
-    daily_scans = cursor.fetchone()['daily_scans']
-    
-    # Get total scans count
-    cursor.execute("SELECT COUNT(*) as total_scans FROM scan_history")
-    total_scans = cursor.fetchone()['total_scans']
-    
-    # Get subscription distribution
-    cursor.execute("""
-        SELECT subscription_level, COUNT(*) as count
-        FROM clients
-        WHERE active = 1
-        GROUP BY subscription_level
-    """)
-    subscription_distribution = {row['subscription_level']: row['count'] for row in cursor.fetchall()}
-    
-    # Calculate estimated monthly revenue
-    # This is a simple calculation, you might have a more complex billing logic
-    subscription_rates = {
-        'basic': 49,
-        'pro': 149,
-        'enterprise': 499
-    }
-    
-    monthly_revenue = sum([
-        subscription_distribution.get(level, 0) * rate
-        for level, rate in subscription_rates.items()
-    ])
-    
-    return {
-        'total_clients': total_clients,
-        'new_clients_month': new_clients,
-        'active_scanners': active_scanners,
-        'daily_scans': daily_scans,
-        'total_scans': total_scans,
-        'subscription_distribution': subscription_distribution,
-        'monthly_revenue': monthly_revenue
-    }
-
+    try:
+        # Get total clients count
+        cursor.execute("SELECT COUNT(*) FROM clients")
+        total_clients = cursor.fetchone()[0]
+        
+        # Get active clients count
+        cursor.execute("SELECT COUNT(*) FROM clients WHERE active = 1")
+        active_clients = cursor.fetchone()[0]
+        
+        # Get inactive clients count
+        cursor.execute("SELECT COUNT(*) FROM clients WHERE active = 0")
+        inactive_clients = cursor.fetchone()[0]
+        
+        # Get total scan count
+        cursor.execute("SELECT COUNT(*) FROM scans")
+        total_scans = cursor.fetchone()[0]
+        
+        # Get today's scan count
+        import datetime
+        today = datetime.date.today().isoformat()
+        cursor.execute("SELECT COUNT(*) FROM scans WHERE DATE(scan_date) = ?", (today,))
+        scans_today = cursor.fetchone()[0]
+        
+        # Get total users count
+        cursor.execute("SELECT COUNT(*) FROM users")
+        total_users = cursor.fetchone()[0]
+        
+        # Get client distribution by subscription
+        cursor.execute("""
+            SELECT subscription, COUNT(*) as count
+            FROM clients
+            GROUP BY subscription
+        """)
+        subscription_distribution = {}
+        for row in cursor.fetchall():
+            subscription_distribution[row[0]] = row[1]
+        
+        # Return summary data
+        return {
+            'total_clients': total_clients,
+            'active_clients': active_clients,
+            'inactive_clients': inactive_clients,
+            'total_scans': total_scans,
+            'scans_today': scans_today,
+            'total_users': total_users,
+            'subscription_distribution': subscription_distribution
+        }
+    finally:
+        # Close connection if we opened it
+        if close_conn and conn:
+            conn.close()
 @with_transaction
 def list_clients(conn, page=1, per_page=10, filters=None, sort_by='id', sort_order='desc'):
     """
