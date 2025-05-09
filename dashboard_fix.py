@@ -22,8 +22,8 @@ def apply_dashboard_fix(file_path):
             print("Could not find dashboard function in admin.py. Manual fix required.")
             return False
         
-        # New dashboard function implementation
-        new_dashboard_function = """@admin_bp.route('/dashboard')
+        # New dashboard function implementation with escaped quotes
+        new_dashboard_function = '''@admin_bp.route('/dashboard')
 @admin_required
 def dashboard(user):
     """Admin dashboard with summary statistics"""
@@ -59,7 +59,7 @@ def dashboard(user):
         return render_template(
             'admin/error.html',
             error=f"Error loading dashboard: {str(e)}"
-        )"""
+        )'''
         
         # Replace the old function with the new one
         updated_content = re.sub(dashboard_pattern, new_dashboard_function, content)
@@ -85,7 +85,7 @@ def add_get_dashboard_summary(client_db_path):
         if 'def get_dashboard_summary' in content:
             # Replace the existing function
             pattern = r"def get_dashboard_summary\([^)]*\):[\s\S]*?(?=def |$)"
-            new_function = """def get_dashboard_summary(cursor=None):
+            new_function = '''def get_dashboard_summary(cursor=None):
     """
     Get dashboard summary statistics
     
@@ -131,11 +131,11 @@ def add_get_dashboard_summary(client_db_path):
         total_users = cursor.fetchone()[0]
         
         # Get client distribution by subscription
-        cursor.execute(\"\"\"
+        cursor.execute("""
             SELECT subscription, COUNT(*) as count
             FROM clients
             GROUP BY subscription
-        \"\"\")
+        """)
         subscription_distribution = {}
         for row in cursor.fetchall():
             subscription_distribution[row[0]] = row[1]
@@ -154,7 +154,7 @@ def add_get_dashboard_summary(client_db_path):
         # Close connection if we opened it
         if close_conn and conn:
             conn.close()
-"""
+'''
             updated_content = re.sub(pattern, new_function, content)
         else:
             # Append the new function to the end of the file
@@ -183,7 +183,7 @@ def fix_list_clients(client_db_path):
             pattern = r"def list_clients\([^)]*\):[\s\S]*?(?=def |$)"
             
             # New list_clients function implementation
-            new_function = """def list_clients(page=1, per_page=10, filters=None, sort_by=None, sort_dir='asc'):
+            new_function = '''def list_clients(page=1, per_page=10, filters=None, sort_by=None, sort_dir='asc'):
     """
     List clients with pagination and filtering
     
@@ -272,7 +272,7 @@ def fix_list_clients(client_db_path):
         'clients': clients,
         'pagination': pagination
     }
-"""
+'''
             # Replace the old function with the new one
             updated_content = re.sub(pattern, new_function, content)
             
