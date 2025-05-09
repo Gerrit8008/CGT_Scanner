@@ -264,17 +264,50 @@ def init_database():
     conn.close()
     logging.info("Database initialization completed")
     
-# Initialize app
-app, limiter = create_app()
-init_database()
+    # Initialize app
+    #app, limiter = create_app()
+    result = create_app()
+    if result is None:
+        # Create a basic app and limiter if the function fails
+        from flask import Flask
+        from flask_limiter import Limiter
+        from flask_limiter.util import get_remote_address
+    
+        app = Flask(__name__)
+        app.secret_key = 'temporary_secret_key'
+    
+        # Create a basic limiter
+        limiter = Limiter(
+            app=app,
+            key_func=get_remote_address,
+            default_limits=["200 per day", "50 per hour"],
+            storage_uri="memory://"
+        )
+    else:
+        # Unpack if it's a tuple
+        try:
+            app, limiter = result
+        except (TypeError, ValueError):
+            # If it's not unpackable, use the result as app and create a basic limiter
+            app = result
+            from flask_limiter import Limiter
+            from flask_limiter.util import get_remote_address
+            limiter = Limiter(
+                app=app,
+                key_func=get_remote_address,
+                default_limits=["200 per day", "50 per hour"],
+                storage_uri="memory://"
+            )
+        
+    init_database()
 
-# Now we can apply admin route fixes after the app is created
-print("Applying admin route fixes...")
-success = apply_admin_route_fixes(app)
-if success:
-    print("Admin route fixes applied successfully!")
-else:
-    print("Failed to apply admin route fixes. Check the logs for details.")
+    # Now we can apply admin route fixes after the app is created
+    print("Applying admin route fixes...")
+    success = apply_admin_route_fixes(app)
+    if success:
+        print("Admin route fixes applied successfully!")
+    else:
+        print("Failed to apply admin route fixes. Check the logs for details.")
 
 # Apply admin configuration
 app = configure_admin(app)
