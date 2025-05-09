@@ -40,6 +40,7 @@ from emergency_access import emergency_bp
 from register_routes import register_all_routes
 from admin_fix_integration import apply_admin_fixes
 from admin_route_fix import apply_admin_route_fixes
+from route_fix import fix_admin_routes
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -122,6 +123,7 @@ def create_app():
     init_db()
     init_client_db()  # Initialize client database
     create_user("admin", "admin@example.com", "admin123", "admin")
+    fix_admin_routes(app)
     
     return app, limiter
 
