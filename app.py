@@ -41,6 +41,7 @@ from emergency_access import emergency_bp
 from register_routes import register_all_routes
 from admin_fix_integration import apply_admin_fixes
 from admin_route_fix import apply_admin_route_fixes
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -72,7 +73,185 @@ from scan import (
     get_industry_benchmarks,
     calculate_industry_percentile
 )
-
+def fix_admin_routes(app):
+    """Add missing routes to the admin blueprint"""
+    # Get the admin blueprint
+    admin_bp = None
+    for name, blueprint in app.blueprints.items():
+        if name == 'admin':
+            admin_bp = blueprint
+            break
+    
+    if not admin_bp:
+        print("Could not find admin blueprint")
+        return False
+    
+    # Create error template directory if it doesn't exist
+    import os
+    template_dir = 'templates/admin'
+    os.makedirs(template_dir, exist_ok=True)
+    
+    # Create error template if it doesn't exist
+    error_template = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - Scanner Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 p-0 sidebar">
+                <div class="text-center mb-4">
+                    <h4>Scanner Platform</h4>
+                    <p class="mb-0 small">Admin Panel</p>
+                </div>
+    
+                <div class="px-3">
+                    <a href="/admin/dashboard" class="sidebar-link">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                    <a href="/admin/clients" class="sidebar-link">
+                        <i class="bi bi-people"></i> Client Management
+                    </a>
+                    <a href="/customize" class="sidebar-link">
+                        <i class="bi bi-plus-circle"></i> Create Scanner
+                    </a>
+                    <a href="/admin/subscriptions" class="sidebar-link">
+                        <i class="bi bi-credit-card"></i> Subscriptions
+                    </a>
+                    <a href="/admin/reports" class="sidebar-link">
+                        <i class="bi bi-file-earmark-text"></i> Reports
+                    </a>
+                    <a href="/admin/settings" class="sidebar-link">
+                        <i class="bi bi-gear"></i> Settings
+                    </a>
+        
+                    <hr class="my-4">
+        
+                    <a href="/auth/logout" class="sidebar-link text-danger">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10 ms-auto main-content">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2>Error</h2>
+                    <div>
+                        <span class="badge bg-primary">Admin</span>
+                        <span class="ms-2">{{ user.username if user else 'Admin' }}</span>
+                    </div>
+                </div>
+                
+                <div class="alert alert-danger">
+                    <h4 class="alert-heading">Error!</h4>
+                    <p>{{ error }}</p>
+                </div>
+                
+                <a href="/admin/dashboard" class="btn btn-primary">Return to Dashboard</a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>"""
+    
+    error_path = os.path.join(template_dir, 'error.html')
+    if not os.path.exists(error_path):
+        with open(error_path, 'w') as f:
+            f.write(error_template)
+            print(f"Created error template at {error_path}")
+    
+    # Add subscriptions page
+    @admin_bp.route('/subscriptions')
+    def subscriptions():
+        try:
+            # Get user from session
+            from auth_utils import verify_session
+            session_token = request.cookies.get('session_token')
+            user = None
+            if session_token:
+                result = verify_session(session_token)
+                if result['status'] == 'success':
+                    user = result['user']
+            
+            # Just render the error template with a message for now
+            return render_template(
+                'admin/error.html',
+                error="Subscription management page is under construction",
+                user=user
+            )
+        except Exception as e:
+            # Return error page
+            return render_template(
+                'admin/error.html',
+                error=f"Error loading subscriptions: {str(e)}"
+            )
+    
+    # Add reports page
+    @admin_bp.route('/reports')
+    def reports():
+        try:
+            # Get user from session
+            from auth_utils import verify_session
+            session_token = request.cookies.get('session_token')
+            user = None
+            if session_token:
+                result = verify_session(session_token)
+                if result['status'] == 'success':
+                    user = result['user']
+            
+            # Just render the error template with a message for now
+            return render_template(
+                'admin/error.html',
+                error="Reports dashboard is under construction",
+                user=user
+            )
+        except Exception as e:
+            # Return error page
+            return render_template(
+                'admin/error.html',
+                error=f"Error loading reports: {str(e)}"
+            )
+    
+    # Add settings page
+    @admin_bp.route('/settings')
+    def settings():
+        try:
+            # Get user from session
+            from auth_utils import verify_session
+            session_token = request.cookies.get('session_token')
+            user = None
+            if session_token:
+                result = verify_session(session_token)
+                if result['status'] == 'success':
+                    user = result['user']
+            
+            # Just render the error template with a message for now
+            return render_template(
+                'admin/error.html',
+                error="Settings page is under construction",
+                user=user
+            )
+        except Exception as e:
+            # Return error page
+            return render_template(
+                'admin/error.html',
+                error=f"Error loading settings: {str(e)}"
+            )
+    
+    print("Added missing admin routes")
+    return True
+    
 # Apply the admin route fixes
 print("Applying admin route fixes...")
 success = apply_admin_route_fixes(app)
@@ -337,6 +516,8 @@ except Exception as register_error:
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
+
+fix_admin_routes(app)
 
 def create_app():
     """Create and configure the Flask application"""
