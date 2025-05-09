@@ -159,6 +159,75 @@ def user_create(user):
     # GET request - render form
     return render_template('admin/user-create.html', user=user)
 
+@admin_bp.route('/clients')
+@admin_required
+def clients(user):
+    """Admin clients management page"""
+    # Get pagination parameters
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    
+    # Get filter parameters
+    filters = {}
+    if 'subscription' in request.args and request.args.get('subscription'):
+        filters['subscription'] = request.args.get('subscription')
+    if 'search' in request.args and request.args.get('search'):
+        filters['search'] = request.args.get('search')
+    if 'status' in request.args and request.args.get('status') and request.args.get('status') != 'all':
+        filters['active'] = request.args.get('status') == 'active'
+    
+    # Get clients
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Try to use list_clients function
+        clients_data = list_clients(cursor, page, per_page, filters)
+    except Exception as e:
+        # Fallback to direct DB query if function not available
+        logging.error(f"Error using list_clients: {e}")
+        try:
+            # Direct query implementation
+            cursor.execute("SELECT * FROM clients ORDER BY id DESC LIMIT ? OFFSET ?", 
+                          (per_page, (page - 1) * per_page))
+            clients = [dict(row) for row in cursor.fetchall()]
+            
+            # Get total count
+            cursor.execute("SELECT COUNT(*) FROM clients")
+            total_count = cursor.fetchone()[0]
+            
+            clients_data = {
+                'clients': clients,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total_count': total_count,
+                    'total_pages': (total_count + per_page - 1) // per_page
+                }
+            }
+        except Exception as direct_error:
+            logging.error(f"Error with direct client query: {direct_error}")
+            clients_data = {
+                'clients': [],
+                'pagination': {
+                    'page': 1, 
+                    'per_page': per_page,
+                    'total_count': 0,
+                    'total_pages': 1
+                }
+            }
+    
+    conn.close()
+    
+    return render_template(
+        'admin/client-management.html',
+        user=user,
+        clients=clients_data.get('clients', []),
+        pagination=clients_data.get('pagination', {}),
+        subscription_filter=filters.get('subscription', ''),
+        search=filters.get('search', '')
+    )
+    
 @admin_bp.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
 @admin_required
 def user_edit(user, user_id):
