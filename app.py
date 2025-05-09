@@ -3252,6 +3252,38 @@ def run_emergency_admin():
         """
         return html
 
+def apply_route_fixes():
+    """Apply all route fixes"""
+    import os
+    import sys
+    from flask import Flask
+    
+    # Add the project directory to Python path
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, script_dir)
+    
+    # Get the Flask app
+    from app import app
+    
+    # Apply auth routes fix
+    from auth_fix import fix_auth_routes
+    auth_fixed = fix_auth_routes(app)
+    
+    # Apply admin routes fix
+    from route_fix import fix_admin_routes
+    admin_fixed = fix_admin_routes(app)
+    
+    # Report results
+    if auth_fixed and admin_fixed:
+        print("All route fixes applied successfully!")
+        return True
+    else:
+        print("Some route fixes could not be applied.")
+        return False
+
+if __name__ == "__main__":
+    apply_route_fixes()
+    
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
 if __name__ == '__main__':
