@@ -1,4 +1,3 @@
-# app.py - Main Flask application
 import logging
 import os
 import sqlite3
@@ -73,15 +72,6 @@ from scan import (
     calculate_industry_percentile
 )
     
-  
-# Apply the admin route fixes
-print("Applying admin route fixes...")
-success = apply_admin_route_fixes(app)
-if success:
-    print("Admin route fixes applied successfully!")
-else:
-    print("Failed to apply admin route fixes. Check the logs for details.")
-
 # Define upload folder for file uploads
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -305,6 +295,15 @@ def init_database():
 # Initialize app
 app, limiter = create_app()
 init_database()
+
+# Now we can apply admin route fixes after the app is created
+print("Applying admin route fixes...")
+success = apply_admin_route_fixes(app)
+if success:
+    print("Admin route fixes applied successfully!")
+else:
+    print("Failed to apply admin route fixes. Check the logs for details.")
+
 # Apply admin configuration
 app = configure_admin(app)
 register_debug_middleware(app)
@@ -338,29 +337,6 @@ except Exception as register_error:
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
-
-def create_app():
-    """Create and configure the Flask application"""
-    
-    # Create app
-    app = Flask(__name__, template_folder='templates')
-    
-    # Other configuration...
-    
-    # Initialize authentication system
-    from init_auth import initialize_authentication
-    initialize_authentication()
-    
-    # Register blueprints
-    from auth import auth_bp
-    from admin import admin_bp
-    from client import client_bp
-    
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(client_bp)
-    
-    return app
 
 def ensure_users_table():
     try:
@@ -551,7 +527,6 @@ def setup_logging():
     
     return logger
 
-# Log system information
 def log_system_info():
     """Log details about the system environment"""
     logger = logging.getLogger(__name__)
@@ -602,63 +577,69 @@ def direct_db_fix():
         # Create a new admin user with simple password
         results.append("Creating/updating admin user...")
         
-        # Generate password hash
-        salt = secrets.token_hex(16)
-        password = 'password123'
-        password_hash = hashlib.pbkdf2_hmac(
-            'sha256', 
-            password.encode(), 
-            salt.encode(), 
-            100000
-        ).hex()
-        
-        # Check if admin user exists
-        cursor.execute("SELECT id FROM users WHERE username = 'superadmin'")
-        admin_user = cursor.fetchone()
-        
-        if admin_user:
-            # Update existing admin
-            cursor.execute('''
-            UPDATE users SET 
-                password_hash = ?, 
-                salt = ?,
-                role = 'admin',
-                active = 1
-            WHERE username = 'superadmin'
-            ''', (password_hash, salt))
-            results.append("Updated existing superadmin user")
-        else:
-            # Create a new admin user
-            cursor.execute('''
-            INSERT INTO users (
-                username, 
-                email, 
-                password_hash, 
-                salt, 
-                role, 
-                full_name, 
-                created_at, 
-                active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-            ''', ('superadmin', 'superadmin@example.com', password_hash, salt, 'admin', 'Super Administrator', datetime.now().isoformat()))
-            results.append("Created new superadmin user")
-        
-        # Commit changes
-        conn.commit()
-        
-        # Verify creation
-        cursor.execute("SELECT id, username, email, role FROM users WHERE username = 'superadmin'")
-        user = cursor.fetchone()
-        if user:
-            results.append(f"Superadmin user verified: ID={user[0]}, username={user[1]}, email={user[2]}, role={user[3]}")
-        
-        # Close connection
-        conn.close()
-        
-        results.append("Database fix completed!")
-        results.append("You can now login with:")
-        results.append("Username: superadmin")
-        results.append("Password: password123")
+        try:
+            import secrets
+            import hashlib
+            
+            # Generate password hash
+            salt = secrets.token_hex(16)
+            password = 'password123'
+            password_hash = hashlib.pbkdf2_hmac(
+                'sha256', 
+                password.encode(), 
+                salt.encode(), 
+                100000
+            ).hex()
+            
+            # Check if admin user exists
+            cursor.execute("SELECT id FROM users WHERE username = 'superadmin'")
+            admin_user = cursor.fetchone()
+            
+            if admin_user:
+                # Update existing admin
+                cursor.execute('''
+                UPDATE users SET 
+                    password_hash = ?, 
+                    salt = ?,
+                    role = 'admin',
+                    active = 1
+                WHERE username = 'superadmin'
+                ''', (password_hash, salt))
+                results.append("Updated existing superadmin user")
+            else:
+                # Create a new admin user
+                cursor.execute('''
+                INSERT INTO users (
+                    username, 
+                    email, 
+                    password_hash, 
+                    salt, 
+                    role, 
+                    full_name, 
+                    created_at, 
+                    active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                ''', ('superadmin', 'superadmin@example.com', password_hash, salt, 'admin', 'Super Administrator', datetime.now().isoformat()))
+                results.append("Created new superadmin user")
+            
+            # Commit changes
+            conn.commit()
+            
+            # Verify creation
+            cursor.execute("SELECT id, username, email, role FROM users WHERE username = 'superadmin'")
+            user = cursor.fetchone()
+            if user:
+                results.append(f"Superadmin user verified: ID={user[0]}, username={user[1]}, email={user[2]}, role={user[3]}")
+            
+            # Close connection
+            conn.close()
+            
+            results.append("Database fix completed!")
+            results.append("You can now login with:")
+            results.append("Username: superadmin")
+            results.append("Password: password123")
+        except Exception as e:
+            results.append(f"Error creating admin user: {str(e)}")
         
         return "<br>".join(results)
     except Exception as e:
@@ -777,9 +758,6 @@ def customize_scanner():
     
     # For GET requests, render the template
     logging.info("Rendering customization form")
-    return render_template('admin/customization-form.html')
-    
-    # For GET requests, render the template
     return render_template('admin/customization-form.html')
 
 # Add a route for the admin dashboard
