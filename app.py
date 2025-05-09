@@ -73,6 +73,14 @@ from scan import (
     calculate_industry_percentile
 )
 
+# Apply the admin route fixes
+print("Applying admin route fixes...")
+success = apply_admin_route_fixes(app)
+if success:
+    print("Admin route fixes applied successfully!")
+else:
+    print("Failed to apply admin route fixes. Check the logs for details.")
+
 # Define upload folder for file uploads
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -3304,13 +3312,7 @@ def apply_route_fixes():
 if __name__ == "__main__":
     apply_route_fixes()
 
-# Apply the admin route fixes
-print("Applying admin route fixes...")
-success = apply_admin_route_fixes(app)
-if success:
-    print("Admin route fixes applied successfully!")
-else:
-    print("Failed to apply admin route fixes. Check the logs for details.")
+
     
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
