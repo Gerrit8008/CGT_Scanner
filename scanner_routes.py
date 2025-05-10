@@ -25,6 +25,9 @@ def client_required(f):
 @client_required
 def activate_scanner(scanner_id):
     try:
+        # Add debug logging
+        app.logger.debug(f"Attempting to activate scanner {scanner_id}")
+        
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -37,12 +40,14 @@ def activate_scanner(scanner_id):
         scanner = cursor.fetchone()
         
         if not scanner:
+            app.logger.error(f"Scanner {scanner_id} not found or unauthorized")
             return jsonify({
                 'status': 'error',
                 'message': 'Scanner not found or unauthorized'
             }), 404
         
         if scanner['deploy_status'] != 'pending':
+            app.logger.error(f"Scanner {scanner_id} is not in pending state")
             return jsonify({
                 'status': 'error',
                 'message': 'Scanner is not in pending state'
@@ -57,13 +62,15 @@ def activate_scanner(scanner_id):
         
         conn.commit()
         
+        app.logger.info(f"Scanner {scanner_id} activated successfully")
         return jsonify({
             'status': 'success',
             'message': 'Scanner activated successfully'
         })
 
     except Exception as e:
-        logging.error(f"Error activating scanner {scanner_id}: {str(e)}")
+        app.logger.error(f"Error activating scanner {scanner_id}: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({
             'status': 'error',
             'message': 'An error occurred while activating the scanner'
