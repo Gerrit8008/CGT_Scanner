@@ -686,35 +686,8 @@ def customize_scanner():
             
             logging.info("Creating client in database...")
             
-            # Try different calling patterns to handle various function signatures
-            try:
-                # First try: call with user_id and client_data (most common pattern)
-                result = create_client(user_id, client_data)
-            except TypeError as te:
-                if "missing" in str(te) and "required positional argument" in str(te):
-                    try:
-                        # Second try: call with client_data and user_id (alternative pattern)
-                        result = create_client(client_data, user_id)
-                    except TypeError:
-                        # Third try: call with explicit connection (fallback)
-                        import sqlite3
-                        from client_db import CLIENT_DB_PATH
-                        
-                        conn = sqlite3.connect(CLIENT_DB_PATH)
-                        conn.row_factory = sqlite3.Row
-                        cursor = conn.cursor()
-                        
-                        try:
-                            # Manually create client with direct database call
-                            result = create_client_direct(conn, cursor, client_data, user_id)
-                            conn.commit()
-                        except Exception as e:
-                            conn.rollback()
-                            raise e
-                        finally:
-                            conn.close()
-                else:
-                    raise te
+            # Call create_client with the correct parameters
+            result = create_client(client_data, user_id)
             
             if not result or result.get('status') != 'success':
                 error_msg = result.get('message', 'Unknown error') if result else 'Failed to create client'
