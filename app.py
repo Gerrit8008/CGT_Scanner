@@ -43,7 +43,7 @@ from admin_fix_integration import apply_admin_fixes
 from admin_route_fix import apply_admin_route_fixes
 from route_fix import fix_admin_routes
 from admin_fix_web import add_admin_fix_route
-
+from scanner_preview import scanner_preview_bp
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
