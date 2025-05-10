@@ -685,7 +685,15 @@ def customize_scanner():
             from client_db import create_client
             
             logging.info("Creating client in database...")
-            result = create_client(client_data, user_id)
+            # Fix: Call create_client with correct parameter order
+            # The @with_transaction decorator expects the function to be called as:
+            # create_client(client_data, user_id) where:
+            # - client_data will be the first argument after conn and cursor
+            # - user_id will be the second argument after conn and cursor
+            
+            # If create_client signature is: create_client(conn, cursor, client_data, user_id)
+            # Then we call it like this:
+            result = create_client(user_id, client_data)  # Swapped order
             
             if not result or result.get('status') != 'success':
                 error_msg = result.get('message', 'Unknown error') if result else 'Failed to create client'
@@ -737,7 +745,7 @@ def customize_scanner():
     # For GET requests, render the template
     logging.info("Rendering customization form")
     return render_template('admin/customization-form.html')
-
+    
 # Add a route for the admin dashboard
 #@app.route('/admin/dashboard', methods=['GET'])
 #def admin_dashboard():
