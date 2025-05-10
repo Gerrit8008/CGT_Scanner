@@ -582,9 +582,20 @@
                                                 </a>
                                             </td>
                                             <td>
-                                                <span class="status-badge {% if scanner.deploy_status == 'deployed' %}status-deployed{% elif scanner.deploy_status == 'pending' %}status-pending{% else %}status-inactive{% endif %}">
+                                                {% if scanner.deploy_status == 'pending' %}
+                                                <div class="d-flex align-items-center"
+                                                     <span class="status-badge status-pending me-2">
+                                                         {{ scanner['deploy_status']|title }}
+                                                     </span>
+                                                     <button onclick="activateScanner('{{ scanner.id }}')" class="btn btn-sm btn-success">
+                                                         <i class="bi bi-play-fill"></i> Activate
+                                                     </button>
+                                                </div>
+                                                {% else %}
+                                                <span class="status-badge {% if scanner.deploy_status == 'deployed' %}status-deployed{% else %}status-inactive{% endif %}">
                                                     {{ scanner['deploy_status']|title }}
                                                 </span>
+                                                {% endif %}
                                             </td>
                                             <td>{{ scanner['last_scan']|default('Never', true) }}</td>
                                             <td>
