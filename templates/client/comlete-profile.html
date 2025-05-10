@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Your Profile - Scanner Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        .form-control:focus {
+            border-color: #FF6900;
+            box-shadow: 0 0 0 0.25rem rgba(255, 105, 0, 0.25);
+        }
+        .btn-primary {
+            background-color: #FF6900;
+            border-color: #FF6900;
+        }
+        .btn-primary:hover {
+            background-color: #e55a00;
+            border-color: #e55a00;
+        }
+        .progress-step {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background-color: #e9ecef;
+            color: #6c757d;
+            line-height: 30px;
+            text-align: center;
+            margin: 0 auto 1rem;
+            transition: all 0.3s ease;
+        }
+        .progress-step.active {
+            background-color: #FF6900;
+            color: white;
+        }
+        .progress-label {
+            text-align: center;
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        .progress-label.active {
+            color: #FF6900;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container">
+        <div class="row justify-content-center mt-5">
+            <div class="col-md-8">
+                <div class="text-center mb-5">
+                    <h2>Complete Your Profile</h2>
+                    <p class="text-muted">Let's set up your security scanner platform account</p>
+                </div>
+                
+                <!-- Progress Indicator -->
+                <div class="row text-center mb-5">
+                    <div class="col">
+                        <div class="progress-step active">1</div>
+                        <div class="progress-label active">Account Created</div>
+                    </div>
+                    <div class="col">
+                        <div class="progress-step active">2</div>
+                        <div class="progress-label active">Business Info</div>
+                    </div>
+                    <div class="col">
+                        <div class="progress-step">3</div>
+                        <div class="progress-label">Complete</div>
+                    </div>
+                </div>
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0"><i class="bi bi-building me-2"></i>Business Information</h4>
+                    </div>
+                    <div class="card-body">
+                        <form method="post">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="business_name" class="form-label">Business Name *</label>
+                                    <input type="text" class="form-control" id="business_name" name="business_name" required 
+                                           placeholder="Acme Corporation">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="business_domain" class="form-label">Business Domain *</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">https://</span>
+                                        <input type="text" class="form-control" id="business_domain" name="business_domain" required 
+                                               placeholder="example.com">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="contact_email" class="form-label">Contact Email *</label>
+                                    <input type="email" class="form-control" id="contact_email" name="contact_email" required 
+                                           value="{{ user.email }}" placeholder="contact@example.com">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="contact_phone" class="form-label">Contact Phone</label>
+                                    <input type="tel" class="form-control" id="contact_phone" name="contact_phone" 
+                                           placeholder="+1 (555) 123-4567">
+                                </div>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label for="scanner_name" class="form-label">Scanner Name</label>
+                                <input type="text" class="form-control" id="scanner_name" name="scanner_name" 
+                                       placeholder="Security Checker" value="">
+                                <div class="form-text">This name will appear in your scanner interface</div>
+                            </div>
+                            
+                            <hr class="my-4">
+                            
+                            <h5 class="mb-3">Default Scan Options</h5>
+                            <p class="text-muted small mb-3">Select which security checks should be enabled by default:</p>
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="network" id="network" name="default_scans" checked>
+                                        <label class="form-check-label" for="network">
+                                            <strong>Network Scan</strong> - Check for open ports and vulnerabilities
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="web" id="web" name="default_scans" checked>
+                                        <label class="form-check-label" for="web">
+                                            <strong>Web Application</strong> - Scan for web vulnerabilities
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="email" id="email" name="default_scans" checked>
+                                        <label class="form-check-label" for="email">
+                                            <strong>Email Security</strong> - Check SPF, DKIM, DMARC records
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="system" id="system" name="default_scans" checked>
+                                        <label class="form-check-label" for="system">
+                                            <strong>System Security</strong> - OS updates and configurations
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <hr class="my-4">
+                            
+                            <h5 class="mb-3">Customization</h5>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="primary_color" class="form-label">Primary Color</label>
+                                    <div class="input-group">
+                                        <input type="color" class="form-control form-control-color" id="primary_color" 
+                                               name="primary_color" value="#FF6900">
+                                        <input type="text" class="form-control" id="primary_color_hex" value="#FF6900" readonly>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="secondary_color" class="form-label">Secondary Color</label>
+                                    <div class="input-group">
+                                        <input type="color" class="form-control form-control-color" id="secondary_color" 
+                                               name="secondary_color" value="#808588">
+                                        <input type="text" class="form-control" id="secondary_color_hex" value="#808588" readonly>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="text-end">
+                                <button type="submit" class="btn btn-primary btn-lg px-5">
+                                    <i class="bi bi-check-circle me-2"></i>Complete Setup
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="card-footer text-muted text-center">
+                        <small>* Required fields</small>
+                    </div>
+                </div>
+                
+                <div class="text-center mt-4">
+                    <p class="text-muted small">
+                        Already have a scanner? <a href="/auth/logout">Logout</a> and login with your existing account.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Color picker synchronization
+        const primaryColor = document.getElementById('primary_color');
+        const primaryColorHex = document.getElementById('primary_color_hex');
+        const secondaryColor = document.getElementById('secondary_color');
+        const secondaryColorHex = document.getElementById('secondary_color_hex');
+        
+        primaryColor.addEventListener('input', function() {
+            primaryColorHex.value = this.value;
+        });
+        
+        secondaryColor.addEventListener('input', function() {
+            secondaryColorHex.value = this.value;
+        });
+        
+        // Auto-fill scanner name from business name
+        document.getElementById('business_name').addEventListener('input', function() {
+            const scannerName = document.getElementById('scanner_name');
+            if (!scannerName.value || scannerName.value === scannerName.defaultValue) {
+                scannerName.value = this.value + ' Scanner';
+            }
+        });
+    </script>
+</body>
+</html>
