@@ -435,8 +435,39 @@ def reports(user):
         if 'date_to' in request.args and request.args.get('date_to'):
             filters['date_to'] = request.args.get('date_to')
         
-        # Get scan history with pagination
-        result = get_scan_history(client['id'], page=page, per_page=per_page)
+        # Get scan history with pagination - FIXED: Removed transaction decorator issue
+        try:
+            # Use a simpler approach for now
+            scan_history = get_scan_history_by_client_id(client['id'])
+            
+            # Apply basic pagination (simplified)
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            scans = scan_history[start_idx:end_idx]
+            
+            total_count = len(scan_history)
+            total_pages = (total_count + per_page - 1) // per_page
+            
+            result = {
+                'scans': scans,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total_count': total_count,
+                    'total_pages': total_pages
+                }
+            }
+        except Exception as e:
+            logging.error(f"Error getting scan history: {e}")
+            result = {
+                'scans': [],
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total_count': 0,
+                    'total_pages': 0
+                }
+            }
         
         # Get list of client's scanners for filter dropdown
         scanners_result = get_deployed_scanners_by_client_id(client['id'])
@@ -455,7 +486,7 @@ def reports(user):
         logger.error(f"Error displaying reports: {str(e)}")
         flash('An error occurred while loading reports', 'danger')
         return redirect(url_for('client.dashboard'))
-
+        
 @client_bp.route('/reports/<scan_id>')
 @client_required
 def report_view(user, scan_id):
