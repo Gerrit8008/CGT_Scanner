@@ -1209,106 +1209,101 @@ def update_client(conn, client_id, client_data):
     return {'status': 'success'}
 
 @with_transaction
-def create_client(conn, client_data, user_id):
+def create_client(conn, cursor, client_data, user_id):
     """Create a new client record"""
-    cursor = conn.cursor()
+    # Validate required fields
+    required_fields = ['business_name', 'business_domain', 'contact_email']
+    for field in required_fields:
+        if not field in client_data:
+            return {'status': 'error', 'message': f'Missing required field: {field}'}
     
     # Generate API key
     api_key = str(uuid.uuid4())
+    current_time = datetime.now().isoformat()
     
-    # Prepare client data
-    now = datetime.now().isoformat()
-    
-    # Extract/validate required fields
-    business_name = client_data.get('business_name')
-    business_domain = client_data.get('business_domain')
-    contact_email = client_data.get('contact_email')
-    
-    if not business_name or not business_domain or not contact_email:
-        return {'status': 'error', 'message': 'Missing required fields'}
-    
-    # Insert the client
-    cursor.execute("""
-        INSERT INTO clients (
-            business_name, business_domain, contact_email, contact_phone,
-            scanner_name, subscription_level, subscription_status,
-            api_key, created_at, created_by, active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    """, (
-        business_name,
-        business_domain,
-        contact_email,
+    # Insert client record
+    cursor.execute('''
+    INSERT INTO clients 
+    (business_name, business_domain, contact_email, contact_phone, 
+     scanner_name, subscription_level, subscription_status, subscription_start,
+     api_key, created_at, created_by, updated_at, updated_by, active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        client_data.get('business_name', ''),
+        client_data.get('business_domain', ''),
+        client_data.get('contact_email', ''),
         client_data.get('contact_phone', ''),
         client_data.get('scanner_name', ''),
         client_data.get('subscription', 'basic'),
         'active',
+        current_time,
         api_key,
-        now,
+        current_time,
+        user_id,
+        current_time,
+        user_id,
+        1
+    ))
+    
+    # Get the client ID
+    client_id = cursor.lastrowid
+    
+    # Save customization data
+    default_scans = json.dumps(client_data.get('default_scans', []))
+    
+    cursor.execute('''
+    INSERT INTO customizations 
+    (client_id, primary_color, secondary_color, logo_path, 
+     favicon_path, email_subject, email_intro, default_scans, last_updated, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        client_id,
+        client_data.get('primary_color', '#FF6900'),
+        client_data.get('secondary_color', '#808588'),
+        client_data.get('logo_path', ''),
+        client_data.get('favicon_path', ''),
+        client_data.get('email_subject', 'Your Security Scan Report'),
+        client_data.get('email_intro', 'Thank you for using our security scanner.'),
+        default_scans,
+        current_time,
         user_id
     ))
     
-    # Get the new client ID
-    client_id = cursor.lastrowid
-    
-    # Insert customization data if provided
-    customization_data = {
-        'client_id': client_id,
-        'primary_color': client_data.get('primary_color', '#FF6900'),
-        'secondary_color': client_data.get('secondary_color', '#808588'),
-        'last_updated': now,
-        'updated_by': user_id
-    }
-    
-    # Add optional customization fields if provided
-    for field in ['logo_path', 'favicon_path', 'email_subject', 'email_intro', 'email_footer']:
-        if field in client_data and client_data[field]:
-            customization_data[field] = client_data[field]
-    
-    # Store default_scans as JSON string if provided
-    if 'default_scans' in client_data and client_data['default_scans']:
-        if isinstance(client_data['default_scans'], list):
-            customization_data['default_scans'] = json.dumps(client_data['default_scans'])
-        else:
-            customization_data['default_scans'] = client_data['default_scans']
-    
-    # Insert customizations
-    columns = ', '.join(customization_data.keys())
-    placeholders = ', '.join(['?'] * len(customization_data))
-    cursor.execute(f"INSERT INTO customizations ({columns}) VALUES ({placeholders})",
-                  list(customization_data.values()))
-    
-    # Generate subdomain for scanner
-    subdomain = business_name.lower().replace(' ', '-')
+    # Create deployed scanner record with sanitized subdomain
+    subdomain = client_data.get('business_name', '').lower()
+    # Clean up subdomain to be URL-friendly
     subdomain = ''.join(c for c in subdomain if c.isalnum() or c == '-')
+    # Remove consecutive dashes and ensure it doesn't start/end with a dash
+    subdomain = '-'.join(filter(None, subdomain.split('-')))
     
-    # Check if subdomain exists, add random suffix if needed
-    cursor.execute("SELECT id FROM deployed_scanners WHERE subdomain = ?", (subdomain,))
+    # Handle duplicates by appending client_id if needed
+    cursor.execute('SELECT id FROM deployed_scanners WHERE subdomain = ?', (subdomain,))
     if cursor.fetchone():
-        import random
-        subdomain = f"{subdomain}-{random.randint(100, 999)}"
+        subdomain = f"{subdomain}-{client_id}"
     
-    # Create a deployed scanner record
-    cursor.execute("""
-        INSERT INTO deployed_scanners (
-            client_id, subdomain, deploy_status, deploy_date, 
-            last_updated, template_version
-        ) VALUES (?, ?, ?, ?, ?, ?)
-    """, (
+    cursor.execute('''
+    INSERT INTO deployed_scanners 
+    (client_id, subdomain, deploy_status, deploy_date, last_updated, template_version)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ''', (
         client_id,
         subdomain,
-        'pending',  # New scanners start as pending
-        now,
-        now,
+        'pending',
+        current_time,
+        current_time,
         '1.0'
     ))
     
-    scanner_id = cursor.lastrowid
+    # Log the client creation
+    log_action(conn, cursor, user_id, 'create', 'client', client_id, 
+              {'business_name': client_data.get('business_name'), 
+               'subscription': client_data.get('subscription', 'basic')})
     
     return {
-        'status': 'success', 
-        'client_id': client_id,
-        'scanner_id': scanner_id,
-        'api_key': api_key
+        "status": "success",
+        "client_id": client_id,
+        "api_key": api_key,
+        "subdomain": subdomain
     }
 
 @with_transaction
