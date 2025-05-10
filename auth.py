@@ -4,6 +4,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import os
 import logging
 from datetime import datetime
+from client_db import register_client
 
 # Import the fixed authenticate_user function
 from fix_auth import authenticate_user_wrapper as authenticate_user
@@ -163,50 +164,58 @@ def register():
     # GET request - show registration form
     return render_template('auth/register.html')
 
-# Client profile completion route
 @auth_bp.route('/complete-profile', methods=['GET', 'POST'])
 def complete_profile():
-    """Complete client profile"""
-    # Check if logged in
+    """Complete user profile after registration"""
+    # Check if user is logged in
     session_token = session.get('session_token')
     if not session_token:
         return redirect(url_for('auth.login'))
     
-    # Verify session
-    session_result = verify_session(session_token)
-    if session_result['status'] != 'success':
-        # Session invalid - clear and redirect to login
-        session.clear()
+    # Verify session token
+    result = verify_session(session_token)
+    if result['status'] != 'success':
+        flash('Please log in to access this page', 'danger')
         return redirect(url_for('auth.login'))
     
-    user = session_result['user']
+    user = result['user']
     
-    # Ensure user has client role
-    if user['role'] != 'client':
-        flash('This area is for clients only', 'danger')
+    # Check if user already has a client profile
+    client = get_client_by_user_id(user['user_id'])
+    if client:
+        # Redirect to appropriate dashboard based on role
         if user['role'] == 'admin':
             return redirect(url_for('admin.dashboard'))
-        return redirect(url_for('auth.login'))
+        else:
+            return redirect(url_for('client.dashboard'))
     
     if request.method == 'POST':
-        # Get business data
+        # Process the form submission
         business_data = {
             'business_name': request.form.get('business_name'),
             'business_domain': request.form.get('business_domain'),
-            'contact_email': request.form.get('contact_email', user['email']),
+            'contact_email': request.form.get('contact_email'),
             'contact_phone': request.form.get('contact_phone', ''),
-            'scanner_name': request.form.get('scanner_name', '')
+            'scanner_name': request.form.get('scanner_name', request.form.get('business_name', '') + ' Scanner'),
+            'subscription_level': 'basic',  # Default to basic
+            'primary_color': request.form.get('primary_color', '#FF6900'),
+            'secondary_color': request.form.get('secondary_color', '#808588'),
+            'email_subject': request.form.get('email_subject', 'Your Security Scan Report'),
+            'email_intro': request.form.get('email_intro', 'Thank you for using our security scanner.'),
+            'default_scans': request.form.getlist('default_scans') or ['network', 'web', 'email', 'system']
         }
         
-        # Register client
-        from client_db import register_client
-        client_result = register_client(user['user_id'], business_data)
+        # Register the client
+        result = register_client(user['user_id'], business_data)
         
-        if client_result['status'] == 'success':
-            flash('Client profile completed successfully', 'success')
+        if result['status'] == 'success':
+            flash('Profile created successfully!', 'success')
+            # Redirect to client dashboard
             return redirect(url_for('client.dashboard'))
         else:
-            flash(f'Failed to complete profile: {client_result["message"]}', 'danger')
+            flash(f'Error creating profile: {result.get("message", "Unknown error")}', 'danger')
+            # Stay on the form page
+            return render_template('auth/complete-profile.html', user=user, error=result.get('message'))
     
-    # GET request - show profile completion form
-    return render_template('auth/complete_profile.html', user=user)
+    # Show the profile completion form
+    return render_template('auth/complete-profile.html', user=user)
