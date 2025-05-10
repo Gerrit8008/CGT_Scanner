@@ -73,6 +73,9 @@ from scan import (
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+if app.config['ENV'] == 'development':
+    app.debug = True
+
 # Make sure the directory exists
 os.makedirs(os.path.dirname(CLIENT_DB_PATH), exist_ok=True)
 
