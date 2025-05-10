@@ -22,7 +22,8 @@ from client_db import (
     get_recent_activities,
     get_available_scanners_for_client,
     get_client_dashboard_data,
-    format_scan_results_for_client
+    format_scan_results_for_client,
+    register_client  # Add this import
 )
 
 # Define client blueprint
@@ -117,7 +118,7 @@ def dashboard(user):
             flash('Please complete your client profile', 'info')
             return redirect(url_for('auth.complete_profile'))
         
-        # Get comprehensive dashboard data
+        # Get comprehensive dashboard data - FIXED: Pass client_id
         dashboard_data = get_client_dashboard_data(client['id'])
         
         if not dashboard_data:
@@ -139,18 +140,36 @@ def dashboard(user):
                 'recent_activities': []
             }
         
-        # Pass client as user_client for template compatibility
-        return render_template(
-            'client/client-dashboard.html',
-            user=user,
-            client=dashboard_data['client'],
-            user_client=dashboard_data['client'],
-            scanners=dashboard_data['scanners'],
-            scan_history=dashboard_data['scan_history'],
-            total_scans=dashboard_data['stats']['total_scans'],
-            client_stats=dashboard_data['stats'],
-            recent_activities=dashboard_data['recent_activities']
-        )
+        # FIXED: Ensure all required template variables are present
+        template_vars = {
+            'user': user,
+            'client': dashboard_data['client'],
+            'user_client': dashboard_data['client'],
+            'scanners': dashboard_data['scanners'],
+            'scan_history': dashboard_data['scan_history'],
+            'total_scans': dashboard_data['stats']['total_scans'],
+            'client_stats': dashboard_data['stats'],
+            'recent_activities': dashboard_data['recent_activities'],
+            # Add missing variables that may be referenced in template
+            'scan_trends': {
+                'scanner_growth': 0,
+                'scan_growth': 0
+            },
+            'critical_issues': dashboard_data['stats'].get('critical_issues', 0),
+            'avg_security_score': dashboard_data['stats'].get('avg_security_score', 'N/A'),
+            'critical_issues_trend': 0,
+            'security_score_trend': 0,
+            'security_status': 'Good',  # Default status
+            'high_issues': dashboard_data['stats'].get('high_issues', 0),
+            'medium_issues': dashboard_data['stats'].get('medium_issues', 0),
+            'recommendations': [],  # Default empty recommendations
+            'scans_used': 0,  # Default scans used
+            'scans_limit': 50,  # Default scans limit
+            'scanner_limit': 1  # Default scanner limit
+        }
+        
+        return render_template('client/client-dashboard.html', **template_vars)
+        
     except Exception as e:
         logger.error(f"Error displaying client dashboard: {str(e)}")
         import traceback
@@ -163,7 +182,21 @@ def dashboard(user):
                               user_client={},
                               scanners=[],
                               scan_history=[],
-                              total_scans=0)
+                              total_scans=0,
+                              client_stats={},
+                              recent_activities=[],
+                              scan_trends={'scanner_growth': 0, 'scan_growth': 0},
+                              critical_issues=0,
+                              avg_security_score='N/A',
+                              critical_issues_trend=0,
+                              security_score_trend=0,
+                              security_status='Good',
+                              high_issues=0,
+                              medium_issues=0,
+                              recommendations=[],
+                              scans_used=0,
+                              scans_limit=50,
+                              scanner_limit=1)
 
 @client_bp.route('/scanners')
 @client_required
@@ -368,6 +401,7 @@ def scanner_regenerate_api_key(user, scanner_id):
     except Exception as e:
         logger.error(f"Error regenerating API key: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)})
+        
 @client_bp.route('/reports')
 @client_required
 def reports(user):
