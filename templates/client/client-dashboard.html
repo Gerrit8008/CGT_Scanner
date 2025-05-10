@@ -569,24 +569,24 @@
                                         <tr>
                                             <td>
                                                 <div class="d-flex align-items-center">
-                                                    <div class="scanner-logo me-2" style="width: 32px; height: 32px; background-color: {{ scanner.primary_color|default('#007bff') }}; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                                                    <div class="scanner-logo me-2" style="width: 32px; height: 32px; background-color: {{ scanner['primary_color']|default('#007bff') }}; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
                                                         {{ scanner['scanner_name'][:2]|upper }}
                                                     </div>
                                                     <strong>{{ scanner.scanner_name }}</strong>
                                                 </div>
                                             </td>
                                             <td>
-                                                <a href="https://{{ scanner.subdomain }}.yourscannerdomain.com" target="_blank" class="text-decoration-none">
-                                                    {{ scanner.subdomain }}.yourscannerdomain.com
+                                                <a href="https://{{ scanner['subdomain'] }}.yourscannerdomain.com" target="_blank" class="text-decoration-none">
+                                                    {{ scanner['subdomain'] }}.yourscannerdomain.com
                                                     <i class="bi bi-box-arrow-up-right ms-1 small"></i>
                                                 </a>
                                             </td>
                                             <td>
                                                 <span class="status-badge {% if scanner.deploy_status == 'deployed' %}status-deployed{% elif scanner.deploy_status == 'pending' %}status-pending{% else %}status-inactive{% endif %}">
-                                                    {{ scanner.deploy_status|title }}
+                                                    {{ scanner['deploy_status']|title }}
                                                 </span>
                                             </td>
-                                            <td>{{ scanner.last_scan|default('Never', true) }}</td>
+                                            <td>{{ scanner['last_scan']|default('Never', true) }}</td>
                                             <td>
                                                 <div class="d-flex align-items-center">
                                                     <div class="progress me-2" style="width: 60px; height: 8px;">
@@ -594,7 +594,7 @@
                                                              style="width: {{ scanner.security_score|default(0) }}%"></div>
                                                     </div>
                                                     <span class="text-{{ 'success' if scanner.security_score > 70 else 'warning' if scanner.security_score > 40 else 'danger' }}">
-                                                        {{ scanner.security_score|default('N/A') }}%
+                                                        {{ scanner['security_score']|default('N/A') }}%
                                                     </span>
                                                 </div>
                                             </td>
