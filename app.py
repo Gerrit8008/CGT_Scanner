@@ -1,4 +1,4 @@
-
+# Standard library imports
 import logging
 import os
 import sqlite3
@@ -6,46 +6,38 @@ import platform
 import socket
 import re
 import uuid
-from werkzeug.utils import secure_filename
-import urllib.parse
-from datetime import datetime
 import json
 import sys
 import traceback
 import requests
-from datetime import timedelta
+from datetime import datetime, timedelta
+
+# Third-party imports
+from werkzeug.utils import secure_filename
+import urllib.parse
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_login import LoginManager, current_user
+from dotenv import load_dotenv
+
+# Local imports
 from email_handler import send_email_report
 from config import get_config
-from dotenv import load_dotenv
-from flask import Blueprint
-from api import api_bp  # Import the new API blueprint
 from client_db import init_client_db, CLIENT_DB_PATH
-from scanner_router import scanner_bp
+from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
+
+# Blueprint imports - Import each blueprint only once
+from api import api_bp
 from auth import auth_bp
 from admin import admin_bp
-from api import api_bp
+from client import client_bp
 from scanner_router import scanner_bp
-from setup_admin import configure_admin
-from client import client_bp  
-from flask_login import LoginManager, current_user
-from auth_routes import auth_bp
-from debug_middleware import register_debug_middleware
-from fix_auth import create_user
-from auth import auth_bp
-from auth_hotfix import register_auth_hotfix
 from emergency_access import emergency_bp
-from register_routes import register_all_routes
-from admin_fix_integration import apply_admin_fixes
-from admin_route_fix import apply_admin_route_fixes
-from route_fix import fix_admin_routes
-from admin_fix_web import add_admin_fix_route
 from scanner_preview import scanner_preview_bp
-from scanner_routes import scanner_bp
-# Import scan functionality
+
+# Scan functionality imports
 from scan import (
     extract_domain_from_email,
     server_lookup,
