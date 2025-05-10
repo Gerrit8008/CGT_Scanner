@@ -425,7 +425,6 @@ try:
     app.register_blueprint(client_bp) 
     app.register_blueprint(emergency_bp)
     app.register_blueprint(scanner_preview_bp)
-    app.register_blueprint(scanner_bp)
     logging.info("Blueprints registered successfully")
 except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
