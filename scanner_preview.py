@@ -147,9 +147,7 @@ def customize_scanner():
     
     conn.close()
     
-    return render_template('customize_scanner.html', 
-                         scanners=existing_scanners,
-                         client=client)
+    return render_template('client/customize_scanner.html', scanners=existing_scanners, client=client)
 
 @scanner_preview_bp.route('/preview/<scanner_id>')
 @require_login
