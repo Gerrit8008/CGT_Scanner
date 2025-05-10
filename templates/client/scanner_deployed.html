@@ -1,0 +1,349 @@
+<!-- templates/scanner_deployed.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Deployed - {{ scanner.scanner_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <style>
+        .sidebar {
+            background-color: #2c3e50;
+            color: white;
+            min-height: 100vh;
+            padding-top: 2rem;
+        }
+        
+        .sidebar-link {
+            color: rgba(255,255,255,0.8);
+            padding: 0.75rem 1rem;
+            border-radius: 5px;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-link:hover {
+            background-color: rgba(255,255,255,0.1);
+            color: white;
+        }
+        
+        .main-content {
+            padding: 2rem;
+        }
+        
+        .success-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .success-icon {
+            font-size: 5rem;
+            color: #28a745;
+            margin-bottom: 1rem;
+        }
+        
+        .deployment-url {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #007bff;
+            text-decoration: none;
+            padding: 0.75rem 1.5rem;
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        
+        .deployment-url:hover {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .info-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .qr-code {
+            max-width: 200px;
+            margin: 1rem auto;
+            display: block;
+        }
+        
+        .embed-code {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 1rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        
+        .copy-button {
+            position: relative;
+            margin-top: 0.5rem;
+        }
+        
+        .celebration-animation {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 30px;
+            background: #f2709c;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            opacity: 0;
+            transform: rotateZ(15deg) rotateY(0deg) rotateX(0deg);
+            animation: confetti 5s ease-in-out 1;
+        }
+        
+        @keyframes confetti {
+            0% {
+                opacity: 1;
+                transform: rotateZ(15deg) rotateY(0deg) rotateX(0deg) translateY(0);
+            }
+            100% {
+                opacity: 0;
+                transform: rotateZ(720deg) rotateY(1800deg) rotateX(0deg) translateY(700px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 p-0 sidebar">
+                <div class="text-center mb-4">
+                    <h4>Scanner Platform</h4>
+                    <p class="mb-0 small">Client Portal</p>
+                </div>
+                
+                <div class="px-3">
+                    <a href="/client/dashboard" class="sidebar-link">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                    <a href="/client/scanners" class="sidebar-link">
+                        <i class="bi bi-shield-check"></i> My Scanners
+                    </a>
+                    <a href="/client/reports" class="sidebar-link">
+                        <i class="bi bi-file-earmark-text"></i> Scan Reports
+                    </a>
+                    <a href="/customize" class="sidebar-link">
+                        <i class="bi bi-plus-circle"></i> Create Scanner
+                    </a>
+                    <a href="/client/settings" class="sidebar-link">
+                        <i class="bi bi-gear"></i> Settings
+                    </a>
+                    
+                    <hr class="my-4">
+                    
+                    <a href="{{ url_for('auth.logout') }}" class="sidebar-link text-danger">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10 ms-auto main-content">
+                <div class="success-header">
+                    <div class="success-icon">
+                        <i class="bi bi-check-circle-fill"></i>
+                    </div>
+                    <h1>Scanner Deployed Successfully!</h1>
+                    <p class="lead text-muted">Your security scanner is now live and ready to use</p>
+                    
+                    <div class="mt-4">
+                        <a href="{{ deploy_url }}" target="_blank" class="deployment-url">
+                            <i class="bi bi-box-arrow-up-right me-2"></i>{{ deploy_url }}
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <!-- Scanner Details -->
+                    <div class="col-md-6">
+                        <div class="info-card">
+                            <h4>Scanner Details</h4>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <td><strong>Scanner Name:</strong></td>
+                                    <td>{{ scanner.scanner_name or 'Security Scanner' }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Subdomain:</strong></td>
+                                    <td>{{ scanner.subdomain }}.yourscannerdomain.com</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Deployment Date:</strong></td>
+                                    <td>{{ scanner.deploy_date or 'Just now' }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Status:</strong></td>
+                                    <td><span class="badge bg-success">Deployed</span></td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <div class="info-card">
+                            <h4>Quick Actions</h4>
+                            <div class="d-grid gap-2">
+                                <a href="{{ deploy_url }}" target="_blank" class="btn btn-primary">
+                                    <i class="bi bi-box-arrow-up-right me-2"></i>Open Scanner
+                                </a>
+                                <a href="/client/scanners/{{ scanner.id }}/view" class="btn btn-outline-primary">
+                                    <i class="bi bi-eye me-2"></i>View Scanner Details
+                                </a>
+                                <a href="/customize" class="btn btn-outline-secondary">
+                                    <i class="bi bi-plus-circle me-2"></i>Create Another Scanner
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Integration Options -->
+                    <div class="col-md-6">
+                        <div class="info-card">
+                            <h4>Share Your Scanner</h4>
+                            
+                            <div class="text-center mb-4">
+                                <h6>QR Code</h6>
+                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ deploy_url }}" alt="Scanner QR Code" class="qr-code">
+                                <p class="small text-muted">Scan to access your security scanner</p>
+                            </div>
+                            
+                            <h6>Embed on Your Website</h6>
+                            <div class="embed-code" id="embedCode">
+&lt;a href="{{ deploy_url }}" 
+   target="_blank" 
+   style="display: inline-block; 
+          padding: 10px 20px; 
+          background-color: #FF6900; 
+          color: white; 
+          text-decoration: none; 
+          border-radius: 5px; 
+          font-weight: bold;"&gt;
+    Run Security Scan
+&lt;/a&gt;</div>
+                            <button class="btn btn-sm btn-outline-secondary copy-button" onclick="copyEmbedCode()">
+                                <i class="bi bi-clipboard me-1"></i>Copy Code
+                            </button>
+                        </div>
+                        
+                        <div class="info-card">
+                            <h4>Next Steps</h4>
+                            <ol class="ps-4">
+                                <li>Test your scanner with a sample domain</li>
+                                <li>Add the scanner link to your website</li>
+                                <li>Share the QR code with your team or clients</li>
+                                <li>Monitor scan results in your dashboard</li>
+                                <li>Customize email notifications and reports</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="text-center mt-5 pt-4 border-top">
+                    <p class="text-muted">
+                        Need help? Check our <a href="/docs" class="text-decoration-none">documentation</a> or 
+                        <a href="/contact" class="text-decoration-none">contact support</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Celebration Animation -->
+    <div class="celebration-animation" id="celebrationAnimation">
+        <!-- Confetti will be generated by JavaScript -->
+    </div>
+    
+    <script>
+        // Copy embed code function
+        function copyEmbedCode() {
+            const embedCode = document.getElementById('embedCode');
+            const textArea = document.createElement('textarea');
+            textArea.value = embedCode.textContent;
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                const button = document.querySelector('.copy-button');
+                const originalContent = button.innerHTML;
+                button.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
+                button.classList.remove('btn-outline-secondary');
+                button.classList.add('btn-success');
+                
+                setTimeout(() => {
+                    button.innerHTML = originalContent;
+                    button.classList.remove('btn-success');
+                    button.classList.add('btn-outline-secondary');
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+        
+        // Celebration animation
+        function createConfetti() {
+            const colors = ['#f2709c', '#724ca1', '#4cc9f2', '#ffcc5c', '#96ceb4'];
+            const celebration = document.getElementById('celebrationAnimation');
+            
+            for (let i = 0; i < 50; i++) {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti';
+                confetti.style.left = `${Math.random() * 100}vw`;
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.animationDelay = `${Math.random() * 2}s`;
+                confetti.style.transform = `rotateZ(${Math.random() * 90}deg)`;
+                celebration.appendChild(confetti);
+                
+                // Remove confetti after animation
+                setTimeout(() => {
+                    confetti.remove();
+                }, 5000);
+            }
+        }
+        
+        // Trigger celebration on page load
+        window.addEventListener('load', () => {
+            setTimeout(createConfetti, 500);
+        });
+        
+        // Auto-select URL for easy copying
+        document.querySelector('.deployment-url').addEventListener('click', function(e) {
+            e.preventDefault();
+            const range = document.createRange();
+            range.selectNode(this);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            
+            // Open in new tab after selection
+            setTimeout(() => {
+                window.open(this.href, '_blank');
+            }, 100);
+        });
+    </script>
+</body>
+</html>
