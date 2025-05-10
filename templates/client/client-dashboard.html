@@ -421,14 +421,14 @@
                                     <svg class="progress-ring" width="120" height="120">
                                         <circle class="progress-ring__circle" stroke="#e9ecef" stroke-width="6" fill="transparent" r="45" cx="60" cy="60"/>
                                         <circle class="progress-ring__circle" stroke="#007bff" stroke-width="6" fill="transparent" r="45" cx="60" cy="60"
-                                                stroke-dasharray="283" stroke-dashoffset="{{ 283 - (avg_security_score|default(0) / 100 * 283) }}"
+                                                stroke-dasharray="283" stroke-dashoffset="{{ 283 - ((avg_security_score|float|default(0)) / 100 * 283) }}"
                                                 style="transition: stroke-dashoffset 1s ease;"/>
                                     </svg>
                                     <div class="position-absolute top-50 start-50 translate-middle">
-                                        <div class="stat-value">{{ avg_security_score|default('N/A') }}%</div>
+                                        <div class="stat-value">{{ avg_security_score|default('0') }}%</div>
                                     </div>
                                 </div>
-                                <h6 class="mt-3">Security Status: <span class="text-{{ 'success' if avg_security_score > 70 else 'warning' if avg_security_score > 40 else 'danger' }}">{{ security_status|default('Good') }}</span></h6>
+                                <h6 class="mt-3">Security Status: <span class="text-{{ 'success' if (avg_security_score|float|default(0)) > 70 else 'warning' if (avg_security_score|float|default(0)) > 40 else 'danger' }}">{{ security_status|default('Good') }}</span></h6>
                                 <div class="mt-3">
                                     <div class="d-flex justify-content-between text-sm mb-1">
                                         <span>Critical</span>
