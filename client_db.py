@@ -3094,36 +3094,6 @@ def get_deployed_scanners(conn, cursor, page=1, per_page=10, filters=None):
     }
 
 @with_transaction
-def get_scanner_by_id(conn, cursor, scanner_id):
-    """Get scanner details by ID"""
-    cursor.execute('''
-    SELECT ds.*, c.business_name, c.business_domain, c.scanner_name, c.contact_email,
-           c.api_key, c.active, cu.primary_color, cu.secondary_color, cu.logo_path,
-           cu.favicon_path, cu.email_subject, cu.email_intro, cu.default_scans
-    FROM deployed_scanners ds
-    JOIN clients c ON ds.client_id = c.id
-    LEFT JOIN customizations cu ON c.id = cu.client_id
-    WHERE ds.id = ?
-    ''', (scanner_id,))
-    
-    row = cursor.fetchone()
-    
-    if not row:
-        return None
-    
-    # Convert row to dict
-    scanner = dict(row)
-    
-    # Convert default_scans JSON to list
-    if scanner.get('default_scans'):
-        try:
-            scanner['default_scans'] = json.loads(scanner['default_scans'])
-        except:
-            scanner['default_scans'] = []
-    
-    return scanner
-
-@with_transaction
 def update_scanner_config(conn, cursor, scanner_id, scanner_data, user_id):
     """Update scanner configuration"""
     # Get scanner details
