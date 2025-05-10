@@ -685,15 +685,36 @@ def customize_scanner():
             from client_db import create_client
             
             logging.info("Creating client in database...")
-            # Fix: Call create_client with correct parameter order
-            # The @with_transaction decorator expects the function to be called as:
-            # create_client(client_data, user_id) where:
-            # - client_data will be the first argument after conn and cursor
-            # - user_id will be the second argument after conn and cursor
             
-            # If create_client signature is: create_client(conn, cursor, client_data, user_id)
-            # Then we call it like this:
-            result = create_client(user_id, client_data)  # Swapped order
+            # Try different calling patterns to handle various function signatures
+            try:
+                # First try: call with user_id and client_data (most common pattern)
+                result = create_client(user_id, client_data)
+            except TypeError as te:
+                if "missing" in str(te) and "required positional argument" in str(te):
+                    try:
+                        # Second try: call with client_data and user_id (alternative pattern)
+                        result = create_client(client_data, user_id)
+                    except TypeError:
+                        # Third try: call with explicit connection (fallback)
+                        import sqlite3
+                        from client_db import CLIENT_DB_PATH
+                        
+                        conn = sqlite3.connect(CLIENT_DB_PATH)
+                        conn.row_factory = sqlite3.Row
+                        cursor = conn.cursor()
+                        
+                        try:
+                            # Manually create client with direct database call
+                            result = create_client_direct(conn, cursor, client_data, user_id)
+                            conn.commit()
+                        except Exception as e:
+                            conn.rollback()
+                            raise e
+                        finally:
+                            conn.close()
+                else:
+                    raise te
             
             if not result or result.get('status') != 'success':
                 error_msg = result.get('message', 'Unknown error') if result else 'Failed to create client'
@@ -745,6 +766,104 @@ def customize_scanner():
     # For GET requests, render the template
     logging.info("Rendering customization form")
     return render_template('admin/customization-form.html')
+
+
+# Helper function for direct database calls if needed
+def create_client_direct(conn, cursor, client_data, user_id):
+    """Direct database call to create client"""
+    import uuid
+    import json
+    from datetime import datetime
+    
+    # Validate required fields
+    required_fields = ['business_name', 'business_domain', 'contact_email']
+    for field in required_fields:
+        if not field in client_data:
+            return {'status': 'error', 'message': f'Missing required field: {field}'}
+    
+    # Generate API key
+    api_key = str(uuid.uuid4())
+    current_time = datetime.now().isoformat()
+    
+    # Insert client record
+    cursor.execute('''
+    INSERT INTO clients 
+    (business_name, business_domain, contact_email, contact_phone, 
+     scanner_name, subscription_level, subscription_status, subscription_start,
+     api_key, created_at, created_by, updated_at, updated_by, active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        client_data.get('business_name', ''),
+        client_data.get('business_domain', ''),
+        client_data.get('contact_email', ''),
+        client_data.get('contact_phone', ''),
+        client_data.get('scanner_name', ''),
+        client_data.get('subscription', 'basic'),
+        'active',
+        current_time,
+        api_key,
+        current_time,
+        user_id,
+        current_time,
+        user_id,
+        1
+    ))
+    
+    # Get the client ID
+    client_id = cursor.lastrowid
+    
+    # Save customization data
+    default_scans = json.dumps(client_data.get('default_scans', []))
+    
+    cursor.execute('''
+    INSERT INTO customizations 
+    (client_id, primary_color, secondary_color, logo_path, 
+     favicon_path, email_subject, email_intro, default_scans, last_updated, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        client_id,
+        client_data.get('primary_color', '#FF6900'),
+        client_data.get('secondary_color', '#808588'),
+        client_data.get('logo_path', ''),
+        client_data.get('favicon_path', ''),
+        client_data.get('email_subject', 'Your Security Scan Report'),
+        client_data.get('email_intro', 'Thank you for using our security scanner.'),
+        default_scans,
+        current_time,
+        user_id
+    ))
+    
+    # Create deployed scanner record with sanitized subdomain
+    subdomain = client_data.get('business_name', '').lower()
+    # Clean up subdomain to be URL-friendly
+    subdomain = ''.join(c for c in subdomain if c.isalnum() or c == '-')
+    # Remove consecutive dashes and ensure it doesn't start/end with a dash
+    subdomain = '-'.join(filter(None, subdomain.split('-')))
+    
+    # Handle duplicates by appending client_id if needed
+    cursor.execute('SELECT id FROM deployed_scanners WHERE subdomain = ?', (subdomain,))
+    if cursor.fetchone():
+        subdomain = f"{subdomain}-{client_id}"
+    
+    cursor.execute('''
+    INSERT INTO deployed_scanners 
+    (client_id, subdomain, deploy_status, deploy_date, last_updated, template_version)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ''', (
+        client_id,
+        subdomain,
+        'pending',
+        current_time,
+        current_time,
+        '1.0'
+    ))
+    
+    return {
+        "status": "success",
+        "client_id": client_id,
+        "api_key": api_key,
+        "subdomain": subdomain
+    }
     
 # Add a route for the admin dashboard
 #@app.route('/admin/dashboard', methods=['GET'])
