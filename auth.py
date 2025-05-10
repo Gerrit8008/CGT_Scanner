@@ -97,17 +97,35 @@ def login():
     return render_template('auth/login.html', next=next_url)
 
 # Logout route
-@auth_bp.route('/logout')
+# Update the logout route in auth.py to accept both GET and POST
+
+@auth_bp.route('/logout', methods=['GET', 'POST'])
 def logout():
-    """User logout"""
-    session_token = session.get('session_token')
-    if session_token:
-        logout_user(session_token)
-    
-    # Clear session
-    session.clear()
-    flash('You have been logged out successfully', 'info')
-    return redirect(url_for('auth.login'))
+    """User logout - accepts both GET and POST methods"""
+    try:
+        # Get session token
+        session_token = session.get('session_token')
+        
+        if session_token:
+            # Use the logout_user function to properly clear session from database
+            result = logout_user(session_token)
+            logging.debug(f"Session logout result: {result}")
+        
+        # Clear the Flask session
+        session.clear()
+        
+        # Flash success message
+        flash('You have been logged out successfully', 'success')
+        
+        # Always redirect to login page after logout, regardless of role
+        return redirect(url_for('auth.login'))
+        
+    except Exception as e:
+        logging.error(f"Error during logout: {e}")
+        # Clear session anyway to ensure logout even if there's an error
+        session.clear()
+        flash('Logout completed', 'info')
+        return redirect(url_for('auth.login'))
 
 # Registration route for clients
 @auth_bp.route('/register', methods=['GET', 'POST'])
