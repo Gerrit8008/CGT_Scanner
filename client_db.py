@@ -498,11 +498,13 @@ def get_available_scanners_for_client(conn, cursor, client_id):
         return []
 
 @with_transaction
-@with_transaction
-def get_client_dashboard_data(conn, cursor, client_id):
+def get_client_dashboard_data(conn, client_id):
     """Get comprehensive dashboard data for a client"""
     try:
-        # Get client info - FIXED: Use get_client_by_id instead of get_client_by_user_id
+        # Create cursor from connection
+        cursor = conn.cursor()
+        
+        # Get client info - FIXED: Use deployed_scanners (not scanners) table
         cursor.execute('''
             SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
                    cu.default_scans, ds.subdomain, ds.deploy_status
@@ -531,11 +533,11 @@ def get_client_dashboard_data(conn, cursor, client_id):
         stats = get_client_statistics(conn, cursor, client_id)
         
         # Get scanners
-        scanners_result = get_deployed_scanners_by_client_id(client_id)  # FIXED: Call without conn/cursor
+        scanners_result = get_deployed_scanners_by_client_id(client_id)
         scanners = scanners_result.get('scanners', [])
         
         # Get scan history
-        scan_history = get_scan_history_by_client_id(client_id, limit=5)  # FIXED: Call without conn/cursor
+        scan_history = get_scan_history_by_client_id(client_id, limit=5)
         
         # Get recent activities
         recent_activities = get_recent_activities(conn, cursor, client_id, limit=10)
@@ -544,6 +546,15 @@ def get_client_dashboard_data(conn, cursor, client_id):
         stats['critical_issues'] = 0  # TODO: Calculate from actual scan data
         stats['high_issues'] = 0      # TODO: Calculate from actual scan data
         stats['medium_issues'] = 0    # TODO: Calculate from actual scan data
+        
+        # FIXED: Ensure avg_security_score is a number, not a string
+        if 'avg_security_score' not in stats or stats['avg_security_score'] == 'N/A':
+            stats['avg_security_score'] = 0
+        else:
+            try:
+                stats['avg_security_score'] = float(stats['avg_security_score'])
+            except (ValueError, TypeError):
+                stats['avg_security_score'] = 0
         
         return {
             'client': client,
@@ -2368,24 +2379,24 @@ def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=N
         # Calculate offset for pagination
         offset = (page - 1) * per_page
         
-        # Base query
-        query = "SELECT * FROM scanners WHERE client_id = ?"
+        # Base query - Use deployed_scanners table
+        query = "SELECT * FROM deployed_scanners WHERE client_id = ?"
         params = [client_id]
         
         # Apply filters if provided
         if filters:
             if 'status' in filters and filters['status']:
-                query += " AND status = ?"
+                query += " AND deploy_status = ?"
                 params.append(filters['status'])
             
             if 'search' in filters and filters['search']:
-                query += " AND (name LIKE ? OR description LIKE ?)"
+                query += " AND (domain LIKE ? OR subdomain LIKE ?)"
                 search_term = f"%{filters['search']}%"
                 params.append(search_term)
                 params.append(search_term)
         
         # Add sorting and pagination
-        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY last_updated DESC LIMIT ? OFFSET ?"
         params.append(per_page)
         params.append(offset)
         
@@ -2394,17 +2405,17 @@ def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=N
         scanners = [dict(row) for row in cursor.fetchall()]
         
         # Get total count for pagination
-        count_query = "SELECT COUNT(*) FROM scanners WHERE client_id = ?"
+        count_query = "SELECT COUNT(*) FROM deployed_scanners WHERE client_id = ?"
         count_params = [client_id]
         
         # Apply the same filters to count query
         if filters:
             if 'status' in filters and filters['status']:
-                count_query += " AND status = ?"
+                count_query += " AND deploy_status = ?"
                 count_params.append(filters['status'])
             
             if 'search' in filters and filters['search']:
-                count_query += " AND (name LIKE ? OR description LIKE ?)"
+                count_query += " AND (domain LIKE ? OR subdomain LIKE ?)"
                 search_term = f"%{filters['search']}%"
                 count_params.append(search_term)
                 count_params.append(search_term)
@@ -2415,7 +2426,7 @@ def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=N
         conn.close()
         
         # Calculate pagination metadata
-        total_pages = (total_count + per_page - 1) // per_page  # Ceiling division
+        total_pages = (total_count + per_page - 1) // per_page
         
         return {
             'scanners': scanners,
@@ -2445,47 +2456,110 @@ def get_scan_history_by_client_id(client_id, limit=None):
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # Base query
-        query = "SELECT * FROM scans WHERE client_id = ? ORDER BY timestamp DESC"
-        params = [client_id]
+        # Check if scan_history table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scan_history'")
+        if not cursor.fetchone():
+            # Fall back to scans table if scan_history doesn't exist
+            base_query = "SELECT * FROM scans WHERE target LIKE ? ORDER BY timestamp DESC"
+            
+            # Get client domain
+            cursor.execute("SELECT business_domain FROM clients WHERE id = ?", (client_id,))
+            client = cursor.fetchone()
+            
+            if client and client['business_domain']:
+                domain = f"%{client['business_domain']}%"
+                params = [domain]
+            else:
+                conn.close()
+                return []
+        else:
+            # Check what columns exist in scan_history
+            cursor.execute("PRAGMA table_info(scan_history)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'client_id' in columns:
+                base_query = "SELECT * FROM scan_history WHERE client_id = ? ORDER BY timestamp DESC"
+                params = [client_id]
+            else:
+                # Try to join with clients table
+                base_query = """
+                SELECT sh.* FROM scan_history sh
+                JOIN clients c ON sh.target LIKE '%' || c.business_domain || '%'
+                WHERE c.id = ? ORDER BY sh.timestamp DESC
+                """
+                params = [client_id]
         
         # Add limit if provided
         if limit:
-            query += " LIMIT ?"
+            base_query += " LIMIT ?"
             params.append(limit)
         
-        cursor.execute(query, params)
+        cursor.execute(base_query, params)
         scan_history = [dict(row) for row in cursor.fetchall()]
         conn.close()
         
         return scan_history
     except Exception as e:
         logging.error(f"Error retrieving scan history for client: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return []
 
-def get_scanner_by_id(scanner_id):
-    """Get scanner details by ID"""
+@with_transaction
+def get_client_statistics(conn, cursor, client_id):
+    """Get comprehensive statistics for a client"""
     try:
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        stats = {}
         
-        cursor.execute('''
-            SELECT * FROM scanners
-            WHERE id = ?
-        ''', (scanner_id,))
+        # Get scanner count
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM deployed_scanners
+            WHERE client_id = ? AND deploy_status = 'deployed'
+        """, (client_id,))
+        stats['scanners_count'] = cursor.fetchone()['count']
         
-        scanner = cursor.fetchone()
-        conn.close()
+        # Get total scans - handle both scan_history and scans tables
+        try:
+            # Check if scan_history table exists and has client_id column
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scan_history'")
+            if cursor.fetchone():
+                cursor.execute("PRAGMA table_info(scan_history)")
+                columns = [column[1] for column in cursor.fetchall()]
+                if 'client_id' in columns:
+                    cursor.execute("""
+                        SELECT COUNT(*) as count
+                        FROM scan_history
+                        WHERE client_id = ?
+                    """, (client_id,))
+                    stats['total_scans'] = cursor.fetchone()['count']
+                else:
+                    stats['total_scans'] = 0
+            else:
+                stats['total_scans'] = 0
+        except Exception as e:
+            logging.warning(f"Error getting scan count: {e}")
+            stats['total_scans'] = 0
         
-        if scanner:
-            return dict(scanner)
-        else:
-            return None
+        # Get average security score (placeholder for now)
+        stats['avg_security_score'] = 75  # Default numeric value
+        
+        # Get reports count (same as total scans for now)
+        stats['reports_count'] = stats['total_scans']
+        
+        # Get recent scans (if applicable)
+        stats['recent_scans'] = []
+        
+        return stats
     except Exception as e:
-        logging.error(f"Error retrieving scanner by ID: {e}")
-        return None
-
+        logging.error(f"Error getting client statistics: {e}")
+        return {
+            'scanners_count': 0,
+            'total_scans': 0,
+            'avg_security_score': 0,  # Numeric value
+            'reports_count': 0,
+            'recent_scans': []
+        }
 def log_scan(client_id, scan_id=None, target=None, scan_type='standard'):
     """Log a scan to the database"""
     try:
