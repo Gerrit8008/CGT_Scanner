@@ -44,6 +44,7 @@ from admin_route_fix import apply_admin_route_fixes
 from route_fix import fix_admin_routes
 from admin_fix_web import add_admin_fix_route
 from scanner_preview import scanner_preview_bp
+from scanner_routes import scanner_bp
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -432,6 +433,7 @@ try:
     app.register_blueprint(client_bp) 
     app.register_blueprint(emergency_bp)
     app.register_blueprint(scanner_preview_bp)
+    app.register_blueprint(scanner_bp)
     logging.info("Blueprints registered successfully")
 except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
