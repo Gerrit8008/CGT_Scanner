@@ -118,7 +118,7 @@ def dashboard(user):
             flash('Please complete your client profile', 'info')
             return redirect(url_for('auth.complete_profile'))
         
-        # Get comprehensive dashboard data - FIXED: Pass client_id
+        # Get comprehensive dashboard data - Pass client_id
         dashboard_data = get_client_dashboard_data(client['id'])
         
         if not dashboard_data:
@@ -132,7 +132,7 @@ def dashboard(user):
                 'stats': {
                     'scanners_count': len(scanners.get('scanners', [])),
                     'total_scans': total_scans,
-                    'avg_security_score': 'N/A',
+                    'avg_security_score': 75,  # Numeric default
                     'reports_count': 0
                 },
                 'scanners': scanners.get('scanners', []),
@@ -140,28 +140,36 @@ def dashboard(user):
                 'recent_activities': []
             }
         
-        # FIXED: Ensure all required template variables are present
+        # Ensure all required template variables are present
+        stats = dashboard_data['stats']
+        
+        # FIXED: Ensure avg_security_score is a number
+        try:
+            avg_security_score = float(stats.get('avg_security_score', 0))
+        except (ValueError, TypeError):
+            avg_security_score = 0
+        
         template_vars = {
             'user': user,
             'client': dashboard_data['client'],
             'user_client': dashboard_data['client'],
             'scanners': dashboard_data['scanners'],
             'scan_history': dashboard_data['scan_history'],
-            'total_scans': dashboard_data['stats']['total_scans'],
-            'client_stats': dashboard_data['stats'],
+            'total_scans': stats['total_scans'],
+            'client_stats': stats,
             'recent_activities': dashboard_data['recent_activities'],
-            # Add missing variables that may be referenced in template
+            # Add missing variables with proper types
             'scan_trends': {
                 'scanner_growth': 0,
                 'scan_growth': 0
             },
-            'critical_issues': dashboard_data['stats'].get('critical_issues', 0),
-            'avg_security_score': dashboard_data['stats'].get('avg_security_score', 'N/A'),
+            'critical_issues': stats.get('critical_issues', 0),
+            'avg_security_score': avg_security_score,  # Ensure this is a number
             'critical_issues_trend': 0,
             'security_score_trend': 0,
-            'security_status': 'Good',  # Default status
-            'high_issues': dashboard_data['stats'].get('high_issues', 0),
-            'medium_issues': dashboard_data['stats'].get('medium_issues', 0),
+            'security_status': 'Good' if avg_security_score > 70 else 'Fair' if avg_security_score > 40 else 'Needs Improvement',
+            'high_issues': stats.get('high_issues', 0),
+            'medium_issues': stats.get('medium_issues', 0),
             'recommendations': [],  # Default empty recommendations
             'scans_used': 0,  # Default scans used
             'scans_limit': 50,  # Default scans limit
@@ -175,7 +183,7 @@ def dashboard(user):
         import traceback
         logger.error(traceback.format_exc())
         
-        # Fallback to basic dashboard
+        # Fallback to basic dashboard with safe defaults
         return render_template('client/client-dashboard.html', 
                               user=user, 
                               error=str(e),
@@ -187,10 +195,10 @@ def dashboard(user):
                               recent_activities=[],
                               scan_trends={'scanner_growth': 0, 'scan_growth': 0},
                               critical_issues=0,
-                              avg_security_score='N/A',
+                              avg_security_score=0,  # Numeric default
                               critical_issues_trend=0,
                               security_score_trend=0,
-                              security_status='Good',
+                              security_status='Unknown',
                               high_issues=0,
                               medium_issues=0,
                               recommendations=[],
