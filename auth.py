@@ -4,7 +4,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import os
 import logging
 from datetime import datetime
-from client_db import register_client
+from auth_utils import create_user, authenticate_user, verify_session
+from client_db import register_client, get_client_by_user_id
 
 # Import the fixed authenticate_user function
 from fix_auth import authenticate_user_wrapper as authenticate_user
