@@ -1,0 +1,620 @@
+<!-- templates/customize_scanner.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Security Scanner - Scanner Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <style>
+        .sidebar {
+            background-color: #2c3e50;
+            color: white;
+            min-height: 100vh;
+            padding-top: 2rem;
+        }
+        
+        .sidebar-link {
+            color: rgba(255,255,255,0.8);
+            padding: 0.75rem 1rem;
+            border-radius: 5px;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-link:hover, .sidebar-link.active {
+            background-color: rgba(255,255,255,0.1);
+            color: white;
+        }
+        
+        .main-content {
+            padding: 2rem;
+        }
+        
+        .customization-card {
+            margin-bottom: 1.5rem;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .live-preview-container {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            background-color: white;
+            min-height: 600px;
+        }
+        
+        .scanner-preview {
+            background-color: var(--secondary-color, #808588);
+            color: white;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .preview-logo {
+            max-height: 40px;
+            max-width: 150px;
+            object-fit: contain;
+        }
+        
+        .preview-content {
+            padding: 2rem;
+            text-align: center;
+            background-color: white;
+        }
+        
+        .preview-button {
+            background-color: var(--primary-color, #FF6900);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: bold;
+            cursor: not-allowed;
+            margin: 0.5rem;
+        }
+        
+        .color-preview {
+            width: 30px;
+            height: 30px;
+            border-radius: 5px;
+            display: inline-block;
+            vertical-align: middle;
+            border: 1px solid #ced4da;
+        }
+        
+        .file-preview {
+            max-width: 100%;
+            max-height: 100px;
+            margin-top: 0.5rem;
+        }
+        
+        .scan-option-preview {
+            text-align: center;
+            color: #666;
+        }
+        
+        .scan-option-preview i {
+            font-size: 1.5rem;
+            margin-bottom: 0.25rem;
+            display: block;
+        }
+        
+        .progress-indicator {
+            display: none;
+            text-align: center;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 p-0 sidebar">
+                <div class="text-center mb-4">
+                    <h4>Scanner Platform</h4>
+                    <p class="mb-0 small">Client Portal</p>
+                </div>
+                
+                <div class="px-3">
+                    <a href="/client/dashboard" class="sidebar-link">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                    <a href="/client/scanners" class="sidebar-link">
+                        <i class="bi bi-shield-check"></i> My Scanners
+                    </a>
+                    <a href="/client/reports" class="sidebar-link">
+                        <i class="bi bi-file-earmark-text"></i> Scan Reports
+                    </a>
+                    <a href="/customize" class="sidebar-link active">
+                        <i class="bi bi-plus-circle"></i> Create Scanner
+                    </a>
+                    <a href="/client/settings" class="sidebar-link">
+                        <i class="bi bi-gear"></i> Settings
+                    </a>
+                    
+                    <hr class="my-4">
+                    
+                    <a href="{{ url_for('auth.logout') }}" class="sidebar-link text-danger">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10 ms-auto main-content">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2>Create Security Scanner</h2>
+                        <p class="text-muted">Customize and deploy your own security scanner</p>
+                    </div>
+                </div>
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <div class="row">
+                    <!-- Configuration Panel -->
+                    <div class="col-md-5">
+                        <form id="scannerConfigForm">
+                            <!-- Basic Information -->
+                            <div class="card customization-card">
+                                <div class="card-header">
+                                    <h4 class="mb-0">Basic Information</h4>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="scannerName" class="form-label">Scanner Name</label>
+                                        <input type="text" class="form-control" id="scannerName" value="{{ client.business_name or 'Security Scanner' }}" required>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="businessDomain" class="form-label">Business Domain</label>
+                                        <input type="text" class="form-control" id="businessDomain" value="{{ client.business_domain or 'example.com' }}" placeholder="example.com" required>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="contactEmail" class="form-label">Contact Email</label>
+                                        <input type="email" class="form-control" id="contactEmail" value="{{ client.contact_email or '' }}" required>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Branding -->
+                            <div class="card customization-card">
+                                <div class="card-header">
+                                    <h4 class="mb-0">Branding</h4>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label for="primaryColor" class="form-label">Primary Color</label>
+                                            <div class="input-group">
+                                                <input type="color" class="form-control form-control-color" id="primaryColor" value="#FF6900">
+                                                <input type="text" class="form-control" id="primaryColorHex" value="#FF6900">
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="col-md-6">
+                                            <label for="secondaryColor" class="form-label">Secondary Color</label>
+                                            <div class="input-group">
+                                                <input type="color" class="form-control form-control-color" id="secondaryColor" value="#808588">
+                                                <input type="text" class="form-control" id="secondaryColorHex" value="#808588">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="logoUpload" class="form-label">Company Logo</label>
+                                        <input type="file" class="form-control" id="logoUpload" accept="image/*">
+                                        <div class="form-text">Recommended size: 200px × 50px</div>
+                                        <div id="logoPreviewContainer" class="mt-2" style="display: none;">
+                                            <img id="logoPreview" class="file-preview">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Email Settings -->
+                            <div class="card customization-card">
+                                <div class="card-header">
+                                    <h4 class="mb-0">Email Settings</h4>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="emailSubject" class="form-label">Report Email Subject</label>
+                                        <input type="text" class="form-control" id="emailSubject" value="Your Security Scan Report">
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="emailIntro" class="form-label">Email Introduction</label>
+                                        <textarea class="form-control" id="emailIntro" rows="3">Thank you for using our security scanner. Please find your detailed report attached.</textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Scan Options -->
+                            <div class="card customization-card">
+                                <div class="card-header">
+                                    <h4 class="mb-0">Default Scan Options</h4>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-6 mb-2">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="networkScan" value="network" checked>
+                                                <label class="form-check-label" for="networkScan">Network Security</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="webScan" value="web" checked>
+                                                <label class="form-check-label" for="webScan">Web Application</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="emailScan" value="email" checked>
+                                                <label class="form-check-label" for="emailScan">Email Security</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 mb-2">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="sslScan" value="ssl" checked>
+                                                <label class="form-check-label" for="sslScan">SSL/TLS</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Actions -->
+                            <div class="d-grid gap-2 mb-4">
+                                <button type="button" class="btn btn-primary" id="saveAndPreviewBtn">
+                                    <i class="bi bi-eye me-2"></i>Save & Preview Scanner
+                                </button>
+                                <button type="button" class="btn btn-success" id="saveAndDeployBtn">
+                                    <i class="bi bi-rocket me-2"></i>Save & Deploy Scanner
+                                </button>
+                            </div>
+                            
+                            <div class="progress-indicator">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Creating your scanner...</p>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Live Preview Panel -->
+                    <div class="col-md-7">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4 class="mb-0">Live Preview</h4>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="live-preview-container">
+                                    <div class="scanner-preview" style="background-color: #808588;">
+                                        <div id="previewLogo">
+                                            <h4 class="mb-0">Security Scanner</h4>
+                                        </div>
+                                        <div>
+                                            <i class="bi bi-person-circle text-white fs-5"></i>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="preview-content">
+                                        <h2>Protect Your Digital Assets</h2>
+                                        <p class="text-muted mb-4">Enter your website URL to perform a comprehensive security scan</p>
+                                        
+                                        <div class="mb-4">
+                                            <input type="url" class="form-control form-control-lg" placeholder="https://example.com" disabled>
+                                        </div>
+                                        
+                                        <div class="d-grid gap-2 mb-4">
+                                            <button type="button" class="preview-button btn-lg" style="background-color: #FF6900;">
+                                                <i class="bi bi-play-circle me-2"></i>Start Security Scan
+                                            </button>
+                                        </div>
+                                        
+                                        <div class="row text-center" id="scanOptionsPreview">
+                                            <div class="col-3 scan-option-preview">
+                                                <i class="bi bi-shield-check"></i>
+                                                <h6 class="small">Network</h6>
+                                            </div>
+                                            <div class="col-3 scan-option-preview">
+                                                <i class="bi bi-globe"></i>
+                                                <h6 class="small">Web App</h6>
+                                            </div>
+                                            <div class="col-3 scan-option-preview">
+                                                <i class="bi bi-envelope"></i>
+                                                <h6 class="small">Email</h6>
+                                            </div>
+                                            <div class="col-3 scan-option-preview">
+                                                <i class="bi bi-lock"></i>
+                                                <h6 class="small">SSL/TLS</h6>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3 alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            This preview shows how your scanner will look. Changes update automatically as you customize.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Scanners -->
+                {% if scanners %}
+                <div class="mt-5">
+                    <h4>Recent Scanners</h4>
+                    <div class="row">
+                        {% for scanner in scanners %}
+                        <div class="col-md-4 mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6>{{ scanner.scanner_name or 'Untitled Scanner' }}</h6>
+                                    <p class="text-muted small mb-2">{{ scanner.subdomain }}.yourscannerdomain.com</p>
+                                    <p class="small mb-0">
+                                        <span class="badge bg-{{ 'success' if scanner.deploy_status == 'deployed' else 'warning' }}">
+                                            {{ scanner.deploy_status|title }}
+                                        </span>
+                                    </p>
+                                    <div class="mt-2">
+                                        <a href="/preview/{{ scanner.id }}" class="btn btn-sm btn-outline-primary">Preview</a>
+                                        {% if scanner.deploy_status == 'deployed' %}
+                                        <a href="https://{{ scanner.subdomain }}.yourscannerdomain.com" target="_blank" class="btn btn-sm btn-outline-success">View Live</a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Live preview functionality
+        class ScannerCustomization {
+            constructor() {
+                this.initializeEventListeners();
+                this.updateLivePreview();
+            }
+            
+            initializeEventListeners() {
+                // Color pickers
+                document.getElementById('primaryColor').addEventListener('input', (e) => {
+                    document.getElementById('primaryColorHex').value = e.target.value;
+                    this.updateLivePreview();
+                });
+                
+                document.getElementById('primaryColorHex').addEventListener('input', (e) => {
+                    document.getElementById('primaryColor').value = e.target.value;
+                    this.updateLivePreview();
+                });
+                
+                document.getElementById('secondaryColor').addEventListener('input', (e) => {
+                    document.getElementById('secondaryColorHex').value = e.target.value;
+                    this.updateLivePreview();
+                });
+                
+                document.getElementById('secondaryColorHex').addEventListener('input', (e) => {
+                    document.getElementById('secondaryColor').value = e.target.value;
+                    this.updateLivePreview();
+                });
+                
+                // Logo upload
+                document.getElementById('logoUpload').addEventListener('change', (e) => {
+                    this.handleLogoUpload(e);
+                });
+                
+                // Text inputs
+                document.getElementById('scannerName').addEventListener('input', () => {
+                    this.updateLivePreview();
+                });
+                
+                document.getElementById('businessDomain').addEventListener('input', () => {
+                    this.updateLivePreview();
+                });
+                
+                // Scan options
+                document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                    checkbox.addEventListener('change', () => {
+                        this.updateScanOptions();
+                    });
+                });
+                
+                // Action buttons
+                document.getElementById('saveAndPreviewBtn').addEventListener('click', () => {
+                    this.saveScanner(true);
+                });
+                
+                document.getElementById('saveAndDeployBtn').addEventListener('click', () => {
+                    this.saveScanner(false);
+                });
+            }
+            
+            updateLivePreview() {
+                const primaryColor = document.getElementById('primaryColor').value;
+                const secondaryColor = document.getElementById('secondaryColor').value;
+                const scannerName = document.getElementById('scannerName').value;
+                const businessDomain = document.getElementById('businessDomain').value;
+                
+                // Update CSS variables
+                document.documentElement.style.setProperty('--primary-color', primaryColor);
+                document.documentElement.style.setProperty('--secondary-color', secondaryColor);
+                
+                // Update preview colors
+                document.querySelector('.scanner-preview').style.backgroundColor = secondaryColor;
+                document.querySelector('.preview-button').style.backgroundColor = primaryColor;
+                
+                // Update scanner name
+                if (!document.getElementById('logoUpload').files[0]) {
+                    document.getElementById('previewLogo').innerHTML = `<h4 class="mb-0">${scannerName}</h4>`;
+                }
+                
+                // Update business domain placeholder
+                document.querySelector('.preview-content input').placeholder = `https://${businessDomain}`;
+                
+                // Update icon colors
+                document.querySelectorAll('.scan-option-preview i').forEach(icon => {
+                    icon.style.color = primaryColor;
+                });
+            }
+            
+            handleLogoUpload(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const imgPreview = document.getElementById('logoPreview');
+                        imgPreview.src = event.target.result;
+                        document.getElementById('logoPreviewContainer').style.display = 'block';
+                        
+                        // Update preview with logo
+                        document.getElementById('previewLogo').innerHTML = `
+                            <img src="${event.target.result}" alt="Logo" class="preview-logo">
+                        `;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+            
+            updateScanOptions() {
+                const scanOptionsPreview = document.getElementById('scanOptionsPreview');
+                const selectedOptions = [];
+                
+                if (document.getElementById('networkScan').checked) selectedOptions.push({icon: 'shield-check', label: 'Network'});
+                if (document.getElementById('webScan').checked) selectedOptions.push({icon: 'globe', label: 'Web App'});
+                if (document.getElementById('emailScan').checked) selectedOptions.push({icon: 'envelope', label: 'Email'});
+                if (document.getElementById('sslScan').checked) selectedOptions.push({icon: 'lock', label: 'SSL/TLS'});
+                
+                if (selectedOptions.length === 0) {
+                    scanOptionsPreview.style.display = 'none';
+                    return;
+                }
+                
+                scanOptionsPreview.style.display = 'flex';
+                scanOptionsPreview.innerHTML = '';
+                
+                selectedOptions.forEach(option => {
+                    const col = document.createElement('div');
+                    col.className = `col-${12/selectedOptions.length} scan-option-preview`;
+                    col.innerHTML = `
+                        <i class="bi bi-${option.icon}" style="color: ${document.getElementById('primaryColor').value}"></i>
+                        <h6 class="small">${option.label}</h6>
+                    `;
+                    scanOptionsPreview.appendChild(col);
+                });
+            }
+            
+            async saveScanner(previewOnly = false) {
+                // Collect form data
+                const formData = {
+                    scannerName: document.getElementById('scannerName').value,
+                    businessDomain: document.getElementById('businessDomain').value,
+                    contactEmail: document.getElementById('contactEmail').value,
+                    primaryColor: document.getElementById('primaryColor').value,
+                    secondaryColor: document.getElementById('secondaryColor').value,
+                    emailSubject: document.getElementById('emailSubject').value,
+                    emailIntro: document.getElementById('emailIntro').value,
+                    defaultScans: []
+                };
+                
+                // Collect selected scan options
+                if (document.getElementById('networkScan').checked) formData.defaultScans.push('network');
+                if (document.getElementById('webScan').checked) formData.defaultScans.push('web');
+                if (document.getElementById('emailScan').checked) formData.defaultScans.push('email');
+                if (document.getElementById('sslScan').checked) formData.defaultScans.push('ssl');
+                
+                // Handle logo upload
+                const logoInput = document.getElementById('logoUpload');
+                if (logoInput.files && logoInput.files[0]) {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const img = new Image();
+                    
+                    img.onload = async () => {
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+                        formData.logo = canvas.toDataURL();
+                        await this.submitScanner(formData, previewOnly);
+                    };
+                    
+                    img.src = document.getElementById('logoPreview').src;
+                } else {
+                    await this.submitScanner(formData, previewOnly);
+                }
+            }
+            
+            async submitScanner(formData, previewOnly) {
+                // Show loading state
+                document.getElementById('scannerConfigForm').style.opacity = '0.6';
+                document.querySelector('.progress-indicator').style.display = 'block';
+                
+                try {
+                    const response = await fetch('/customize', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(formData)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        if (previewOnly) {
+                            // Redirect to preview
+                            window.location.href = data.preview_url;
+                        } else {
+                            // Redirect to deployment page
+                            window.location.href = data.deploy_url;
+                        }
+                    } else {
+                        throw new Error(data.message || 'Failed to save scanner');
+                    }
+                } catch (error) {
+                    console.error('Error saving scanner:', error);
+                    alert('Error saving scanner: ' + error.message);
+                } finally {
+                    // Hide loading state
+                    document.getElementById('scannerConfigForm').style.opacity = '1';
+                    document.querySelector('.progress-indicator').style.display = 'none';
+                }
+            }
+        }
+        
+        // Initialize the customization system
+        document.addEventListener('DOMContentLoaded', () => {
+            new ScannerCustomization();
+        });
+    </script>
+</body>
+</html>
