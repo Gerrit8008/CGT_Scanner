@@ -498,26 +498,52 @@ def get_available_scanners_for_client(conn, cursor, client_id):
         return []
 
 @with_transaction
+@with_transaction
 def get_client_dashboard_data(conn, cursor, client_id):
     """Get comprehensive dashboard data for a client"""
     try:
-        # Get client info
-        client = get_client_by_id(conn, cursor, client_id)
-        if not client:
+        # Get client info - FIXED: Use get_client_by_id instead of get_client_by_user_id
+        cursor.execute('''
+            SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
+                   cu.default_scans, ds.subdomain, ds.deploy_status
+            FROM clients c
+            LEFT JOIN customizations cu ON c.id = cu.client_id
+            LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
+            WHERE c.id = ? AND c.active = 1
+        ''', (client_id,))
+        
+        client_row = cursor.fetchone()
+        if not client_row:
             return None
+        
+        client = dict(client_row)
+        
+        # Convert default_scans JSON to list if present
+        if client.get('default_scans'):
+            try:
+                client['default_scans'] = json.loads(client['default_scans'])
+            except json.JSONDecodeError:
+                client['default_scans'] = []
+        else:
+            client['default_scans'] = []
         
         # Get statistics
         stats = get_client_statistics(conn, cursor, client_id)
         
         # Get scanners
-        scanners_result = get_deployed_scanners_by_client_id(conn, cursor, client_id)
+        scanners_result = get_deployed_scanners_by_client_id(client_id)  # FIXED: Call without conn/cursor
         scanners = scanners_result.get('scanners', [])
         
         # Get scan history
-        scan_history = get_scan_history_by_client_id(conn, cursor, client_id, limit=5)
+        scan_history = get_scan_history_by_client_id(client_id, limit=5)  # FIXED: Call without conn/cursor
         
         # Get recent activities
         recent_activities = get_recent_activities(conn, cursor, client_id, limit=10)
+        
+        # Calculate additional stats for template
+        stats['critical_issues'] = 0  # TODO: Calculate from actual scan data
+        stats['high_issues'] = 0      # TODO: Calculate from actual scan data
+        stats['medium_issues'] = 0    # TODO: Calculate from actual scan data
         
         return {
             'client': client,
@@ -528,6 +554,8 @@ def get_client_dashboard_data(conn, cursor, client_id):
         }
     except Exception as e:
         logging.error(f"Error getting client dashboard data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return None
 
 @with_transaction
@@ -1372,31 +1400,61 @@ def create_user(conn, username, email, password, role='client', full_name=''):
     
     return {'status': 'success', 'user_id': user_id}
 
-@with_transaction
-def get_user_by_id(conn, user_id):
-    """Get user details by ID"""
-    cursor = conn.cursor()
+def get_client_by_user_id(user_id):
+    """
+    Get client details by user ID with enhanced error handling
     
-    cursor.execute("""
-        SELECT *, 
-            (SELECT COUNT(*) FROM sessions WHERE user_id = users.id) as login_count,
-            (SELECT MAX(created_at) FROM sessions WHERE user_id = users.id) as last_login
-        FROM users 
-        WHERE id = ?
-    """, (user_id,))
-    
-    user = cursor.fetchone()
-    
-    if user:
-        # Convert to dict but exclude sensitive fields
-        user_dict = dict(user)
-        if 'password_hash' in user_dict:
-            del user_dict['password_hash']
-        if 'salt' in user_dict:
-            del user_dict['salt']
+    Args:
+        user_id (int): User ID
+        
+    Returns:
+        dict or None: Client details or None if not found
+    """
+    try:
+        if not user_id:
+            logger.warning("get_client_by_user_id called with empty user_id")
+            return None
             
-        return user_dict
-    else:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Enhanced query with JOIN to get customization data 
+        cursor.execute('''
+            SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
+                   cu.default_scans, ds.subdomain, ds.deploy_status
+            FROM clients c
+            LEFT JOIN customizations cu ON c.id = cu.client_id
+            LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
+            WHERE c.user_id = ? AND c.active = 1
+        ''', (user_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            logger.debug(f"No client found for user_id: {user_id}")
+            return None
+            
+        # Convert row to dict
+        client_data = dict(row)
+        
+        # Convert default_scans JSON to list if present
+        if client_data.get('default_scans'):
+            try:
+                client_data['default_scans'] = json.loads(client_data['default_scans'])
+            except json.JSONDecodeError:
+                client_data['default_scans'] = []
+        else:
+            client_data['default_scans'] = []
+            
+        logger.debug(f"Successfully retrieved client for user_id: {user_id}")
+        return client_data
+        
+    except Exception as e:
+        logger.error(f"Error retrieving client by user ID: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None
 
 @with_transaction
