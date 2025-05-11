@@ -210,6 +210,36 @@ def verify_session(session_token):
         logger.error(f"Session verification error: {e}")
         return {"status": "error", "message": f"Session verification failed: {str(e)}"}
 
+def get_client_id_from_request():
+    """Get client ID from the current request context"""
+    # Check for API key in headers
+    api_key = request.headers.get('X-API-Key')
+    if api_key:
+        # Look up client by API key
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM clients WHERE api_key = ?', (api_key,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return result[0]
+    
+    # If no API key or invalid, check session
+    if 'user' in session:
+        user_id = session['user'].get('id')
+        if user_id:
+            conn = sqlite3.connect(CLIENT_DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM clients WHERE user_id = ?', (user_id,))
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                return result[0]
+    
+    raise ValueError("No valid client ID found in request")
+
 def logout_user(session_token):
     """
     Logout a user by invalidating their session
