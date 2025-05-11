@@ -222,6 +222,25 @@ def get_client_by_user_id(conn, user_id):
         # If this fails, try the old function signature
         return _get_client_by_user_id_legacy(user_id)
 
+def track_activity(client_id, activity_type, details):
+    """Track client activities"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO activity_logs 
+            (client_id, activity_type, details, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (
+            client_id,
+            activity_type,
+            json.dumps(details),
+            datetime.now().isoformat()
+        ))
+        conn.commit()
+    finally:
+        conn.close()
+
 def _get_client_by_user_id_legacy(user_id):
     """Legacy version of get_client_by_user_id for backward compatibility"""
     try:
