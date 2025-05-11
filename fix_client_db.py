@@ -1,4 +1,4 @@
-import os
+simport os
 import sys
 import sqlite3
 import logging
