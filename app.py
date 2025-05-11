@@ -44,6 +44,8 @@ from admin_route_fix import apply_admin_route_fixes
 from route_fix import fix_admin_routes
 from admin_fix_web import add_admin_fix_route
 from scanner_preview import scanner_preview_bp
+from client_routes import client_bp
+from scanner_router import scanner_bp
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -190,8 +192,9 @@ def create_app():
     from flask_limiter.util import get_remote_address
     
     app = Flask(__name__)
-    app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-    
+    app.config.from_object(get_config())
+    app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+
     # Enable CORS
     CORS(app)
     
