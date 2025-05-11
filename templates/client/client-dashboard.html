@@ -582,20 +582,9 @@
                                                 </a>
                                             </td>
                                             <td>
-                                                {% if scanner.deploy_status == 'pending' %}
-                                                <div class="d-flex align-items-center"
-                                                     <span class="status-badge status-pending me-2">
-                                                         {{ scanner['deploy_status']|title }}
-                                                     </span>
-                                                     <button onclick="activateScanner('{{ scanner.id }}')" class="btn btn-sm btn-success">
-                                                         <i class="bi bi-play-fill"></i> Activate
-                                                     </button>
-                                                </div>
-                                                {% else %}
-                                                <span class="status-badge {% if scanner.deploy_status == 'deployed' %}status-deployed{% else %}status-inactive{% endif %}">
+                                                <span class="status-badge {% if scanner.deploy_status == 'deployed' %}status-deployed{% elif scanner.deploy_status == 'pending' %}status-pending{% else %}status-inactive{% endif %}">
                                                     {{ scanner['deploy_status']|title }}
                                                 </span>
-                                                {% endif %}
                                             </td>
                                             <td>{{ scanner['last_scan']|default('Never', true) }}</td>
                                             <td>
@@ -960,42 +949,7 @@
                 });
             });
         });
-
-        function activateScanner(scannerId) {
-            if (!confirm('Are you sure you want to activate this scanner?')) {
-                return;
-            }
-
-            const button = event.target.closest('button');
-            const originalContent = button.innerHTML;
-            button.disabled = true;
-            button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Activating...';
-
-            fetch(`/api/scanners/${scannerId}/activate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    // Refresh the page to show updated status
-                    window.location.reload();
-                } else {
-                    alert(data.message || 'Failed to activate scanner');
-                    button.disabled = false;
-                    button.innerHTML = originalContent;
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('An error occurred while activating the scanner');
-                button.disabled = false;
-                button.innerHTML = originalContent;
-            });
-        }
+        
         // Run quick scan for a specific scanner
         function runQuickScan(scannerId) {
             fetch('/api/quick_scan', {
