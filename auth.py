@@ -133,40 +133,55 @@ def logout():
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
-    """Client registration page with proper role-based redirection"""
+    """User registration page with proper role-based redirection"""
     if request.method == 'POST':
-        # ... [existing user registration code] ...
-
+        # Get form data
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        full_name = request.form.get('full_name', '')
+        
+        # Optional business info
+        business_name = request.form.get('business_name', '')
+        business_domain = request.form.get('business_domain', '')
+        contact_phone = request.form.get('contact_phone', '')
+        scanner_name = request.form.get('scanner_name', '')
+        
+        # Basic validation
+        if not username or not email or not password:
+            flash('Please fill out all required fields', 'danger')
+            return render_template('auth/register.html')
+        
+        if password != confirm_password:
+            flash('Passwords do not match', 'danger')
+            return render_template('auth/register.html')
+        
+        # Create the user
+        user_result = create_user(username, email, password, 'client', full_name)
+        
         if user_result['status'] == 'success':
             # Get business registration data
             business_data = {
-                'business_name': request.form.get('business_name', ''),
-                'business_domain': request.form.get('business_domain', ''),
+                'business_name': business_name,
+                'business_domain': business_domain,
                 'contact_email': email,
-                'contact_phone': request.form.get('contact_phone', ''),
-                'scanner_name': request.form.get('scanner_name', '')
+                'contact_phone': contact_phone,
+                'scanner_name': scanner_name
             }
             
             # Register client using the new database manager
             if business_data['business_name'] and business_data['business_domain']:
                 client_id = register_client(user_result['user_id'], business_data)
-                
-                # Create client's specific database
-                db_name = db_manager.create_client_database(
-                    client_id, 
-                    business_data['business_name']
-                )
-                
-                if db_name:
-                    flash('Registration successful! You can now log in', 'success')
-                else:
-                    flash('User created but client database creation failed', 'warning')
-            else:
-                flash('User created successfully. Please log in and complete your client profile', 'success')
             
+            flash('Registration successful! You can now log in', 'success')
             return redirect(url_for('auth.login'))
         else:
             flash(f'Registration failed: {user_result["message"]}', 'danger')
+            return render_template('auth/register.html')
+    
+    # GET request - show registration form
+    return render_template('auth/register.html')
 
 def register_client(user_id: int, business_data: dict) -> dict:
     """Register a new client and create their database"""
