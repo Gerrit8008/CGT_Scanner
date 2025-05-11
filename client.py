@@ -1,10 +1,49 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
+import os
 import logging
-from functools import wraps
+import json
 from datetime import datetime
+from functools import wraps
+
+# Import authentication utilities
 from auth_utils import verify_session
 from client_db import (
-    get_client_by_user_id,
+    get_client_by_user_id, 
+    get_deployed_scanners_by_client_id,
+    get_scan_history_by_client_id,
+    get_scanner_by_id,
+    update_scanner_config,
+    regenerate_scanner_api_key,
+    log_scan,
+    get_scan_history,
+    get_scanner_stats,
+    update_client,
+    get_client_statistics,
+    get_recent_activities,
+    get_available_scanners_for_client,
+    get_client_dashboard_data,
+    format_scan_results_for_client,
+    register_client  # Add this import
+)
+
+# Define client blueprint
+client_bp = Blueprint('client', __name__, url_prefix='/client')
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
+import os
+import logging
+import json
+from datetime import datetime
+from functools import wraps
+
+# Import authentication utilities
+from auth_utils import verify_session
+from client_db import (
+    get_client_by_user_id, 
     get_deployed_scanners_by_client_id,
     get_scan_history_by_client_id,
     get_scanner_by_id,
@@ -30,14 +69,16 @@ logger = logging.getLogger(__name__)
 
 # Middleware to require client login with role check
 def client_required(f):
-    @wraps(f)
+    @wraps(f)  # Preserve function metadata
     def decorated_function(*args, **kwargs):
+        # Check for session token
         session_token = session.get('session_token')
         
         if not session_token:
             logger.debug("No session token found, redirecting to login")
             return redirect(url_for('auth.login', next=request.url))
         
+        # Verify session token
         result = verify_session(session_token)
         
         if result['status'] != 'success':
@@ -45,92 +86,163 @@ def client_required(f):
             flash('Please log in to access this page', 'danger')
             return redirect(url_for('auth.login', next=request.url))
         
+        # Add role check - ensure user is a client
         if result['user']['role'] != 'client':
             logger.warning(f"Access denied: User {result['user']['username']} with role {result['user']['role']} attempted to access client area")
             flash('Access denied. This area is for clients only.', 'danger')
             
+            # Redirect admins to their dashboard
             if result['user']['role'] == 'admin':
                 return redirect(url_for('admin.dashboard'))
-            return redirect(url_for('auth.login'))
+            else:
+                return redirect(url_for('auth.login'))
         
+        # Add user info to kwargs
         kwargs['user'] = result['user']
+        logger.debug(f"Client access granted for user: {result['user']['username']}")
         return f(*args, **kwargs)
     
     return decorated_function
 
-@client_bp.route('/')
 @client_bp.route('/dashboard')
 @client_required
 def dashboard(user):
     """Client dashboard"""
     try:
-        # Changed from user['id'] to user['user_id']
+        # Get client info for this user
         client = get_client_by_user_id(user['user_id'])
         
         if not client:
+            # Client record doesn't exist yet - redirect to complete profile
             logger.info(f"User {user['username']} has no client profile, redirecting to complete_profile")
             flash('Please complete your client profile', 'info')
             return redirect(url_for('auth.complete_profile'))
         
-        # Get dashboard data
-        deployed_scanners = get_deployed_scanners_by_client_id(client['id'])
-        recent_scans = get_scan_history_by_client_id(client['id'], limit=5)
-        recent_activities = get_recent_activities(client['id'], limit=5)
-        statistics = get_client_statistics(client['id'])
+        # Get comprehensive dashboard data - Pass client_id
+        dashboard_data = get_client_dashboard_data(client['id'])
         
-        return render_template('client/dashboard.html',
-            user=user,
-            client=client,
-            scanners=deployed_scanners,
-            recent_scans=recent_scans,
-            recent_activities=recent_activities,
-            statistics=statistics
-        )
+        if not dashboard_data:
+            # Fallback to basic data if comprehensive fetch fails
+            scanners = get_deployed_scanners_by_client_id(client['id'])
+            scan_history = get_scan_history_by_client_id(client['id'], limit=5)
+            total_scans = len(get_scan_history_by_client_id(client['id']))
+            
+            dashboard_data = {
+                'client': client,
+                'stats': {
+                    'scanners_count': len(scanners.get('scanners', [])),
+                    'total_scans': total_scans,
+                    'avg_security_score': 75,  # Numeric default
+                    'reports_count': 0
+                },
+                'scanners': scanners.get('scanners', []),
+                'scan_history': scan_history,
+                'recent_activities': []
+            }
+        
+        # Ensure all required template variables are present
+        stats = dashboard_data['stats']
+        
+        # FIXED: Ensure avg_security_score is a number
+        try:
+            avg_security_score = float(stats.get('avg_security_score', 0))
+        except (ValueError, TypeError):
+            avg_security_score = 0
+        
+        template_vars = {
+            'user': user,
+            'client': dashboard_data['client'],
+            'user_client': dashboard_data['client'],
+            'scanners': dashboard_data['scanners'],
+            'scan_history': dashboard_data['scan_history'],
+            'total_scans': stats['total_scans'],
+            'client_stats': stats,
+            'recent_activities': dashboard_data['recent_activities'],
+            # Add missing variables with proper types
+            'scan_trends': {
+                'scanner_growth': 0,
+                'scan_growth': 0
+            },
+            'critical_issues': stats.get('critical_issues', 0),
+            'avg_security_score': avg_security_score,  # Ensure this is a number
+            'critical_issues_trend': 0,
+            'security_score_trend': 0,
+            'security_status': 'Good' if avg_security_score > 70 else 'Fair' if avg_security_score > 40 else 'Needs Improvement',
+            'high_issues': stats.get('high_issues', 0),
+            'medium_issues': stats.get('medium_issues', 0),
+            'recommendations': [],  # Default empty recommendations
+            'scans_used': 0,  # Default scans used
+            'scans_limit': 50,  # Default scans limit
+            'scanner_limit': 1  # Default scanner limit
+        }
+        
+        return render_template('client/client-dashboard.html', **template_vars)
+        
     except Exception as e:
-        logger.error(f"Error in client dashboard: {str(e)}")
-        flash('An error occurred while loading the dashboard', 'danger')
-        return redirect(url_for('auth.login'))
+        logger.error(f"Error displaying client dashboard: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         
+        # Fallback to basic dashboard with safe defaults
+        return render_template('client/client-dashboard.html', 
+                              user=user, 
+                              error=str(e),
+                              user_client={},
+                              scanners=[],
+                              scan_history=[],
+                              total_scans=0,
+                              client_stats={},
+                              recent_activities=[],
+                              scan_trends={'scanner_growth': 0, 'scan_growth': 0},
+                              critical_issues=0,
+                              avg_security_score=0,  # Numeric default
+                              critical_issues_trend=0,
+                              security_score_trend=0,
+                              security_status='Unknown',
+                              high_issues=0,
+                              medium_issues=0,
+                              recommendations=[],
+                              scans_used=0,
+                              scans_limit=50,
+                              scanner_limit=1)
+
 @client_bp.route('/scanners')
 @client_required
 def scanners(user):
-    """List client's scanners"""
+    """List all scanners for the client"""
     try:
-        client = get_client_by_user_id(user['id'])
+        # Get client info
+        client = get_client_by_user_id(user['user_id'])
+        
         if not client:
             flash('Please complete your client profile', 'info')
             return redirect(url_for('auth.complete_profile'))
-            
-        deployed_scanners = get_deployed_scanners_by_client_id(client['id'])
-        return render_template('client/scanners.html',
+        
+        # Get pagination parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = 10
+        
+        # Get filters
+        filters = {}
+        if 'status' in request.args and request.args.get('status'):
+            filters['status'] = request.args.get('status')
+        if 'search' in request.args and request.args.get('search'):
+            filters['search'] = request.args.get('search')
+        
+        # Get client's scanners with pagination
+        result = get_deployed_scanners_by_client_id(client['id'], page, per_page, filters)
+        
+        return render_template(
+            'client/scanners.html',
             user=user,
             client=client,
-            scanners=deployed_scanners
+            scanners=result.get('scanners', []),
+            pagination=result.get('pagination', {}),
+            filters=filters
         )
     except Exception as e:
-        logger.error(f"Error in scanners page: {str(e)}")
-        flash('An error occurred while loading scanners', 'danger')
-        return redirect(url_for('client.dashboard'))
-
-@client_bp.route('/reports')
-@client_required
-def reports(user):
-    """View scan reports"""
-    try:
-        client = get_client_by_user_id(user['id'])
-        if not client:
-            flash('Please complete your client profile', 'info')
-            return redirect(url_for('auth.complete_profile'))
-            
-        scan_history = get_scan_history_by_client_id(client['id'])
-        return render_template('client/reports.html',
-            user=user,
-            client=client,
-            scans=scan_history
-        )
-    except Exception as e:
-        logger.error(f"Error in reports page: {str(e)}")
-        flash('An error occurred while loading reports', 'danger')
+        logger.error(f"Error displaying client scanners: {str(e)}")
+        flash('An error occurred while loading your scanners', 'danger')
         return redirect(url_for('client.dashboard'))
 
 @client_bp.route('/scanners/<int:scanner_id>/view')
