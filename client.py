@@ -64,8 +64,8 @@ def client_required(f):
 def dashboard(user):
     """Client dashboard"""
     try:
-        # Get client info for this user
-        client = get_client_by_user_id(user['id'])
+        # Changed from user['id'] to user['user_id']
+        client = get_client_by_user_id(user['user_id'])
         
         if not client:
             logger.info(f"User {user['username']} has no client profile, redirecting to complete_profile")
@@ -78,7 +78,7 @@ def dashboard(user):
         recent_activities = get_recent_activities(client['id'], limit=5)
         statistics = get_client_statistics(client['id'])
         
-        return render_template('client/client-dashboard.html',
+        return render_template('client/dashboard.html',
             user=user,
             client=client,
             scanners=deployed_scanners,
@@ -86,12 +86,11 @@ def dashboard(user):
             recent_activities=recent_activities,
             statistics=statistics
         )
-        
     except Exception as e:
         logger.error(f"Error in client dashboard: {str(e)}")
         flash('An error occurred while loading the dashboard', 'danger')
         return redirect(url_for('auth.login'))
-
+        
 @client_bp.route('/scanners')
 @client_required
 def scanners(user):
