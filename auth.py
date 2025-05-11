@@ -167,12 +167,19 @@ def register():
                 'business_domain': business_domain,
                 'contact_email': email,
                 'contact_phone': contact_phone,
-                'scanner_name': scanner_name
+                'scanner_name': scanner_name or business_name + ' Scanner'
             }
             
-            # Register client using the new database manager
-            if business_data['business_name'] and business_data['business_domain']:
-                client_id = register_client(user_result['user_id'], business_data)
+            # Register client only if business data is provided
+            if business_name and business_domain:
+                try:
+                    client_id = register_client(user_result['user_id'], business_data)
+                except Exception as e:
+                    # Log the error but continue
+                    logging.error(f"Error registering client: {e}")
+                    flash('User created successfully. Please complete your client profile after login.', 'success')
+            else:
+                flash('User created successfully. Please complete your client profile after login.', 'success')
             
             flash('Registration successful! You can now log in', 'success')
             return redirect(url_for('auth.login'))
@@ -183,48 +190,135 @@ def register():
     # GET request - show registration form
     return render_template('auth/register.html')
 
-def register_client(user_id: int, business_data: dict) -> dict:
-    """Register a new client and create their database"""
+def register_client(user_id, business_data):
+    """
+    Register a client for a user with improved error handling
+    
+    Args:
+        user_id (int): User ID
+        business_data (dict): Business information
+        
+    Returns:
+        dict: Client registration result
+    """
+    from fix_database import get_db_connection
+    
     try:
-        with get_db_connection(db_manager.admin_db_path) as conn:
+        # Check for required fields
+        if not business_data.get('business_name') or not business_data.get('business_domain') or not business_data.get('contact_email'):
+            return {"status": "error", "message": "Business name, domain, and contact email are required"}
+        
+        with get_db_connection() as conn:
             cursor = conn.cursor()
+            
+            # Check if user exists
+            cursor.execute('SELECT id, role FROM users WHERE id = ? AND active = 1', (user_id,))
+            user = cursor.fetchone()
+            
+            if not user:
+                return {"status": "error", "message": "User not found or inactive"}
+            
+            # Check if client already exists for this user
+            cursor.execute('SELECT id FROM clients WHERE user_id = ?', (user_id,))
+            existing_client = cursor.fetchone()
+            
+            if existing_client:
+                return {"status": "error", "message": "Client already registered for this user"}
+            
+            # Generate API key
+            import secrets
+            api_key = secrets.token_hex(16)
+            
+            # Get current timestamp
+            from datetime import datetime
+            now = datetime.now().isoformat()
             
             # Insert client record
             cursor.execute('''
-                INSERT INTO clients (
-                    user_id, business_name, business_domain, 
-                    contact_email, contact_phone, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO clients (
+                user_id, business_name, business_domain, contact_email, contact_phone,
+                scanner_name, subscription_level, subscription_status, subscription_start,
+                api_key, created_at, created_by, active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             ''', (
                 user_id,
-                business_data['business_name'],
-                business_data['business_domain'],
-                business_data['contact_email'],
+                business_data.get('business_name'),
+                business_data.get('business_domain'),
+                business_data.get('contact_email'),
                 business_data.get('contact_phone', ''),
-                datetime.now().isoformat()
+                business_data.get('scanner_name', business_data.get('business_name') + ' Scanner'),
+                business_data.get('subscription_level', 'basic'),
+                'active',
+                now,
+                api_key,
+                now,
+                user_id
             ))
             
             client_id = cursor.lastrowid
             
-            # Create client's specific database
-            db_name = db_manager.create_client_database(
-                client_id, 
-                business_data['business_name']
-            )
+            # Insert customization record with default values
+            try:
+                import json
+                cursor.execute('''
+                INSERT INTO customizations (
+                    client_id, primary_color, secondary_color, email_subject, email_intro, 
+                    default_scans, last_updated, updated_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    client_id,
+                    business_data.get('primary_color', '#FF6900'),
+                    business_data.get('secondary_color', '#808588'),
+                    business_data.get('email_subject', 'Your Security Scan Report'),
+                    business_data.get('email_intro', 'Thank you for using our security scanner.'),
+                    json.dumps(business_data.get('default_scans', ['network', 'web', 'email', 'system'])),
+                    now,
+                    user_id
+                ))
+            except Exception as custom_error:
+                logging.warning(f"Error creating customization record: {custom_error}")
+            
+            # Create scanner deployment record
+            try:
+                subdomain = business_data.get('business_name', '').lower()
+                # Clean up subdomain to be URL-friendly
+                subdomain = ''.join(c for c in subdomain if c.isalnum() or c == '-')
+                # Remove consecutive dashes
+                subdomain = '-'.join(filter(None, subdomain.split('-')))
+                
+                # Check for duplicate subdomain
+                cursor.execute('SELECT id FROM deployed_scanners WHERE subdomain = ?', (subdomain,))
+                if cursor.fetchone():
+                    subdomain = f"{subdomain}-{client_id}"
+                
+                cursor.execute('''
+                INSERT INTO deployed_scanners 
+                (client_id, subdomain, deploy_status, deploy_date, last_updated, template_version)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    client_id,
+                    subdomain,
+                    'pending',
+                    now,
+                    now,
+                    '1.0'
+                ))
+            except Exception as deploy_error:
+                logging.warning(f"Error creating scanner deployment: {deploy_error}")
+            
+            conn.commit()
             
             return {
-                "status": "success",
-                "client_id": client_id,
-                "database": db_name
+                "status": "success", 
+                "client_id": client_id, 
+                "message": "Client registered successfully",
+                "api_key": api_key
             }
             
     except Exception as e:
-        logging.error(f"Error registering client: {e}")
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
+        logging.error(f"Error in register_client: {e}")
+        return {"status": "error", "message": str(e)}
+        
 @auth_bp.route('/complete-profile', methods=['GET', 'POST'])
 def complete_profile():
     """Complete user profile after registration"""
@@ -266,17 +360,32 @@ def complete_profile():
             'default_scans': request.form.getlist('default_scans') or ['network', 'web', 'email', 'system']
         }
         
-        # Register the client
-        result = register_client(user['user_id'], business_data)
+        # Validate required fields
+        if not business_data['business_name'] or not business_data['business_domain']:
+            flash('Business name and domain are required', 'danger')
+            return render_template('auth/complete-profile.html', user=user)
         
-        if result['status'] == 'success':
-            flash('Profile created successfully!', 'success')
-            # Redirect to client dashboard
-            return redirect(url_for('client.dashboard'))
-        else:
-            flash(f'Error creating profile: {result.get("message", "Unknown error")}', 'danger')
-            # Stay on the form page
-            return render_template('auth/complete-profile.html', user=user, error=result.get('message'))
+        # Use the improved register_client function
+        try:
+            from fix_database import get_db_connection
+            
+            # Use the improved client registration function
+            result = register_client(user['user_id'], business_data)
+            
+            if result['status'] == 'success':
+                flash('Profile created successfully!', 'success')
+                # Redirect to client dashboard
+                return redirect(url_for('client.dashboard'))
+            else:
+                flash(f'Error creating profile: {result.get("message", "Unknown error")}', 'danger')
+                # Stay on the form page
+                return render_template('auth/complete-profile.html', user=user)
+        except Exception as e:
+            import traceback
+            logging.error(f"Complete profile error: {str(e)}")
+            logging.error(traceback.format_exc())
+            flash(f'An error occurred during profile creation: {str(e)}', 'danger')
+            return render_template('auth/complete-profile.html', user=user, error=str(e))
     
     # Show the profile completion form
     return render_template('auth/complete-profile.html', user=user)
