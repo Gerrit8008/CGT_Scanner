@@ -1,6 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from client_db import CLIENT_DB_PATH, verify_session
-from auth_utils import verify_session
 from fix_auth import (
     authenticate_user_wrapper as authenticate_user,
     logout_user, 
