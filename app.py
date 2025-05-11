@@ -30,7 +30,6 @@ from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_
 
 # Blueprint imports - Import each blueprint only once
 from client_routes import client_bp  # Change this line
-from auth import auth_bp
 from admin import admin_bp
 from api import api_bp
 from scanner_router import scanner_bp
@@ -431,7 +430,6 @@ try:
     # Import the function here to avoid circular imports
     from admin_fix import register_debug_middleware
     register_debug_middleware(app)
-    app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(scanner_bp)
