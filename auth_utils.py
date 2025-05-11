@@ -13,6 +13,21 @@ logger = logging.getLogger(__name__)
 # Define database path
 CLIENT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_scanner.db')
 
+def save_uploaded_file(file, directory, allowed_extensions=None):
+    """Save uploaded file with security checks"""
+    if file and allowed_file(file.filename, allowed_extensions):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(directory, filename)
+        file.save(filepath)
+        return filepath
+    return None
+
+def allowed_file(filename, allowed_extensions):
+    """Check if file extension is allowed"""
+    if allowed_extensions is None:
+        return True
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
 def hash_password(password, salt=None):
     """
     Hash a password using PBKDF2 with a salt
