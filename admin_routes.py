@@ -31,6 +31,25 @@ def admin_required(f):
     decorated_function.__name__ = f.__name__
     return decorated_function
 
+@admin_routes_bp.route('/your-admin-route')
+@admin_required
+def your_admin_route(user):
+    """Admin route description"""
+    return jsonify({
+        'status': 'success',
+        'admin_data': get_admin_data()
+    })
+
+@admin_routes_bp.route('/your-admin-route/<resource_id>')
+@admin_required
+def your_admin_resource(user, resource_id):
+    """Admin resource route description"""
+    return jsonify({
+        'status': 'success',
+        'resource': get_resource(resource_id)
+    })
+
+
 @admin_routes_bp.route('/subscriptions')
 @admin_required
 def subscriptions(user):
