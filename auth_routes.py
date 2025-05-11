@@ -141,24 +141,30 @@ def register():
         
         if result['status'] == 'success':
             # Automatically create a client profile for the user
-            # Extract domain from email
-            domain = email.split('@')[-1]
-            business_name = full_name or username
-            
-            client_data = {
-                'business_name': business_name,
-                'business_domain': domain,
-                'contact_email': email,
-                'scanner_name': f"{business_name}'s Scanner"
-            }
-            
-            from auth_utils import register_client
-            client_result = register_client(result['user_id'], client_data)
-            
-            if client_result['status'] == 'success':
+            try:
+                # Extract domain from email
+                domain = email.split('@')[-1]
+                business_name = full_name or username
+                
+                client_data = {
+                    'business_name': business_name,
+                    'business_domain': domain,
+                    'contact_email': email,
+                    'contact_phone': '',
+                    'scanner_name': f"{business_name}'s Scanner",
+                    'subscription_level': 'basic'
+                }
+                
+                from auth_utils import register_client
+                client_result = register_client(result['user_id'], client_data)
+                
+                if client_result['status'] == 'success':
+                    flash('Registration successful! Please log in', 'success')
+                else:
+                    flash(f'Registration successful, but client profile setup failed: {client_result["message"]}. You can complete this later.', 'warning')
+            except Exception as e:
                 flash('Registration successful! Please log in', 'success')
-            else:
-                flash(f'Registration successful, but client profile setup failed: {client_result["message"]}. You can complete this later.', 'warning')
+                logging.error(f"Error creating default client profile: {str(e)}")
                 
             return redirect(url_for('auth.login'))
         else:
