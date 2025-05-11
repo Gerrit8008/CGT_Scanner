@@ -570,7 +570,7 @@
                                             <td>
                                                 <div class="d-flex align-items-center">
                                                     <div class="scanner-logo me-2" style="width: 32px; height: 32px; background-color: {{ scanner['primary_color']|default('#007bff') }}; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
-                                                        {{ scanner['scanner_name'][:2]|upper }}
+                                                        {{ (scanner.get('scanner_name') or scanner.get('name') or 'SC')[:2]|upper }}
                                                     </div>
                                                     <strong>{{ scanner.scanner_name }}</strong>
                                                 </div>
