@@ -52,20 +52,21 @@ def dashboard(user):
     """Client dashboard"""
     try:
         # Get client info for this user
-        client = get_client_by_user_id(user['id'])
+        # Change from user['id'] to user['user_id']
+        client = get_client_by_user_id(user['user_id'])
         
         if not client:
             logger.info(f"User {user['username']} has no client profile, redirecting to complete_profile")
             flash('Please complete your client profile', 'info')
             return redirect(url_for('auth.complete_profile'))
         
-        # Get client dashboard data
+        # Get dashboard data
         deployed_scanners = get_deployed_scanners_by_client_id(client['id'])
         recent_scans = get_scan_history_by_client_id(client['id'], limit=5)
         recent_activities = get_recent_activities(client['id'], limit=5)
         statistics = get_client_statistics(client['id'])
         
-        return render_template('client/dashboard.html',
+        return render_template('client/client-dashboard.html',
             user=user,
             client=client,
             scanners=deployed_scanners,
