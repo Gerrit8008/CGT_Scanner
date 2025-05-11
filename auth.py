@@ -6,10 +6,14 @@ import logging
 from datetime import datetime
 from auth_utils import create_user, authenticate_user, verify_session
 from client_db import register_client, get_client_by_user_id
+from database_manager import DatabaseManager
 
 # Import the fixed authenticate_user function
 from fix_auth import authenticate_user_wrapper as authenticate_user
 from fix_auth import verify_session, logout_user, create_user
+
+# Initialize the database manager
+db_manager = DatabaseManager()
 
 # Create authentication blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -127,61 +131,42 @@ def logout():
         flash('Logout completed', 'info')
         return redirect(url_for('auth.login'))
 
-# Registration route for clients
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     """Client registration page with proper role-based redirection"""
     if request.method == 'POST':
-        # Get user registration data
-        username = request.form.get('username')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
-        full_name = request.form.get('full_name', '')
-        
-        # Validate input
-        if not username or not email or not password:
-            flash('All fields are required', 'danger')
-            return render_template('auth/register.html')
-        
-        if password != confirm_password:
-            flash('Passwords do not match', 'danger')
-            return render_template('auth/register.html')
-        
-        # IMPORTANT: Create user with client role (never admin)
-        user_role = 'client'  # Force client role for registration
-        user_result = create_user(username, email, password, user_role, full_name)
-        
+        # ... [existing user registration code] ...
+
         if user_result['status'] == 'success':
             # Get business registration data
             business_data = {
                 'business_name': request.form.get('business_name', ''),
                 'business_domain': request.form.get('business_domain', ''),
-                'contact_email': email,  # Use the same email as user by default
+                'contact_email': email,
                 'contact_phone': request.form.get('contact_phone', ''),
                 'scanner_name': request.form.get('scanner_name', '')
             }
             
-            # Register client
+            # Register client using the new database manager
             if business_data['business_name'] and business_data['business_domain']:
-                from client_db import register_client
-                client_result = register_client(user_result['user_id'], business_data)
+                client_id = register_client(user_result['user_id'], business_data)
                 
-                if client_result['status'] == 'success':
+                # Create client's specific database
+                db_name = db_manager.create_client_database(
+                    client_id, 
+                    business_data['business_name']
+                )
+                
+                if db_name:
                     flash('Registration successful! You can now log in', 'success')
                 else:
-                    flash(f'User created but client registration failed: {client_result["message"]}', 'warning')
+                    flash('User created but client database creation failed', 'warning')
             else:
                 flash('User created successfully. Please log in and complete your client profile', 'success')
             
-            # Redirect to login after successful registration
-            # The login function will then direct them to the client dashboard
             return redirect(url_for('auth.login'))
         else:
             flash(f'Registration failed: {user_result["message"]}', 'danger')
-    
-    # GET request - show registration form
-    return render_template('auth/register.html')
 
 @auth_bp.route('/complete-profile', methods=['GET', 'POST'])
 def complete_profile():
