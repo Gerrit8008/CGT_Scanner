@@ -194,9 +194,11 @@ def login():
             session['username'] = result['username']
             session['role'] = result['role']
             
+            # Always redirect to appropriate dashboard based on role
             if result['role'] == 'admin':
                 return redirect(url_for('admin.dashboard'))
             else:
+                # For clients, always go to client dashboard
                 return redirect(url_for('client.dashboard'))
         else:
             flash(result['message'], 'danger')
