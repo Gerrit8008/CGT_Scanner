@@ -381,62 +381,6 @@ def get_deployed_scanners_by_client_id(client_id, page=1, per_page=10, filters=N
             }
         }
 
-def get_scanner_details(scanner_id):
-    """Get scanner details from the database"""
-    try:
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT d.*, c.id as client_id 
-            FROM deployed_scanners d
-            JOIN clients c ON d.client_id = c.id
-            WHERE d.id = ?
-        ''', (scanner_id,))
-        
-        row = cursor.fetchone()
-        if row:
-            # Convert row to dictionary
-            columns = [desc[0] for desc in cursor.description]
-            return dict(zip(columns, row))
-        return None
-        
-    except sqlite3.Error as e:
-        logging.error(f"Database error: {e}")
-        raise
-    finally:
-        if conn:
-            conn.close()
-
-def update_deployment_status(scanner_id, status, config_path=None):
-    """Update scanner deployment status"""
-    try:
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        cursor = conn.cursor()
-        
-        if config_path:
-            cursor.execute('''
-                UPDATE deployed_scanners 
-                SET deploy_status = ?, config_path = ?, last_updated = ?
-                WHERE id = ?
-            ''', (status, config_path, datetime.now().isoformat(), scanner_id))
-        else:
-            cursor.execute('''
-                UPDATE deployed_scanners 
-                SET deploy_status = ?, last_updated = ?
-                WHERE id = ?
-            ''', (status, datetime.now().isoformat(), scanner_id))
-            
-        conn.commit()
-        return True
-        
-    except sqlite3.Error as e:
-        logging.error(f"Database error: {e}")
-        raise
-    finally:
-        if conn:
-            conn.close()
-
 @with_transaction
 def get_client_statistics(conn, cursor, client_id):
     """Get comprehensive statistics for a client"""
