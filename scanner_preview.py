@@ -336,90 +336,86 @@ def save_scanner():
             'message': str(e)
         }), 500
 
+def save_scanner_config(scanner_id, data):
+    """Validate and save scanner configuration"""
+    required_fields = ['scannerName', 'businessDomain']
+    for field in required_fields:
+        if not data.get(field):
+            raise ValueError(f"Missing required field: {field}")
+            
+    config_path = f"/config/{scanner_id}.json"
+    config_data = {
+        'scanner_name': data.get('scannerName'),
+        'business_domain': data.get('businessDomain'),
+        'configuration_version': '1.0',
+        'last_updated': datetime.now().isoformat(),
+        'status': 'deployed'  # Set initial status to deployed
+    }
+    
+    # Save configuration file
+    with open(config_path, 'w') as f:
+        json.dump(config_data, f, indent=4)
+    
+    return config_path
+
 @scanner_preview_bp.route('/deploy/<scanner_id>')
 @require_login
 def deploy_scanner(scanner_id):
     """Deploy the scanner (make it live)"""
     conn = get_db_connection()
-    
-    # Update scanner status to deployed
-    conn.execute(
-        "UPDATE deployed_scanners SET deploy_status = 'deployed', deploy_date = ? WHERE id = ?",
-        (datetime.now().isoformat(), scanner_id)
-    )
-    conn.commit()
-    
-    # Get scanner details for confirmation
-    scanner = conn.execute(
-        "SELECT s.*, c.scanner_name FROM deployed_scanners s "
-        "JOIN clients c ON s.client_id = c.id "
-        "WHERE s.id = ?",
-        (scanner_id,)
-    ).fetchone()
-    
-    conn.close()
-    
-    if scanner:
-        # Create the deployment URL
-        deploy_url = f"https://{scanner['subdomain']}.yourscannerdomain.com"
-        return render_template('scanner_deployed.html', 
-                             scanner=scanner, 
-                             deploy_url=deploy_url)
-    
-    return "Scanner not found", 404
+    try:
+        # Check if scanner exists and is pending
+        scanner = conn.execute(
+            "SELECT deploy_status FROM deployed_scanners WHERE id = ?",
+            (scanner_id,)
+        ).fetchone()
+        
+        if not scanner:
+            return jsonify({'status': 'error', 'message': 'Scanner not found'}), 404
+            
+        # Update scanner status to deployed
+        conn.execute(
+            "UPDATE deployed_scanners SET deploy_status = 'deployed', deploy_date = ? WHERE id = ?",
+            (datetime.now().isoformat(), scanner_id)
+        )
+        conn.commit()
+        
+        return jsonify({'status': 'success', 'message': 'Scanner deployed successfully'})
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
 
 def create_scanner(data):
     """Create a new scanner configuration"""
     conn = get_db_connection()
     client_id = get_client_id_from_session()
     
-    if not client_id:
-        raise Exception("Client not found")
-    
-    # Generate scanner ID and subdomain
-    scanner_id = str(uuid.uuid4())
-    subdomain = generate_subdomain(data.get('scannerName', 'scanner'))
-    
-    # Insert scanner record
-    conn.execute(
-        "INSERT INTO deployed_scanners (id, client_id, subdomain, domain, deploy_status, deploy_date, config_path, template_version) "
-        "VALUES (?, ?, ?, ?, 'pending', ?, ?, '1.0')",
-        (scanner_id, client_id, subdomain, data.get('businessDomain', ''), datetime.now().isoformat(), f"/config/{scanner_id}.json")
-    )
-    
-    # Update client record with scanner name
-    conn.execute(
-        "UPDATE clients SET scanner_name = ? WHERE id = ?",
-        (data.get('scannerName', 'Security Scanner'), client_id)
-    )
-    
-    # Save logo if provided
-    logo_path = None
-    if 'logo' in data and data['logo'].startswith('data:image'):
-        logo_path = save_logo_from_base64(data['logo'], scanner_id)
-    
-    # Save customization
-    conn.execute(
-        "INSERT OR REPLACE INTO customizations "
-        "(client_id, primary_color, secondary_color, logo_path, email_subject, email_intro, default_scans, last_updated, updated_by) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            client_id,
-            data.get('primaryColor', '#FF6900'),
-            data.get('secondaryColor', '#808588'),
-            logo_path,
-            data.get('emailSubject', 'Your Security Scan Report'),
-            data.get('emailIntro', 'Thank you for using our security scanner.'),
-            json.dumps(data.get('defaultScans', ['network', 'web', 'email', 'ssl'])),
-            datetime.now().isoformat(),
-            session.get('user_id')
+    try:
+        # Generate scanner ID and subdomain
+        scanner_id = str(uuid.uuid4())
+        subdomain = generate_subdomain(data.get('scannerName', 'scanner'))
+        
+        # Insert scanner record with initial deployed status
+        conn.execute(
+            "INSERT INTO deployed_scanners (id, client_id, subdomain, domain, deploy_status, deploy_date, config_path, template_version) "
+            "VALUES (?, ?, ?, ?, 'deployed', ?, ?, '1.0')",  # Changed 'pending' to 'deployed'
+            (scanner_id, client_id, subdomain, data.get('businessDomain', ''), 
+             datetime.now().isoformat(), f"/config/{scanner_id}.json")
         )
-    )
-    
-    conn.commit()
-    conn.close()
-    
-    return scanner_id
+        
+        # Save configuration and commit
+        save_scanner_config(scanner_id, data)
+        conn.commit()
+        return {'status': 'success', 'scanner_id': scanner_id}
+        
+    except Exception as e:
+        conn.rollback()
+        return {'status': 'error', 'message': str(e)}
+    finally:
+        conn.close()
 
 @scanner_preview_bp.route('/api/scanner/download-report', methods=['POST'])
 @require_login
