@@ -64,6 +64,74 @@ def verify_credentials(username, password):
         if conn:
             conn.close()
 
+@auth_bp.route('/complete_profile', methods=['GET', 'POST'])
+def complete_profile():
+    """Complete client profile after registration"""
+    # Check if user is logged in
+    session_token = session.get('session_token')
+    if not session_token:
+        return redirect(url_for('auth.login'))
+    
+    result = verify_session(session_token)
+    if result['status'] != 'success':
+        return redirect(url_for('auth.login'))
+    
+    user = result['user']
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            business_name = request.form.get('business_name')
+            contact_email = request.form.get('contact_email')
+            contact_phone = request.form.get('contact_phone')
+            address = request.form.get('address')
+            industry = request.form.get('industry')
+            
+            # Basic validation
+            if not business_name or not contact_email:
+                flash('Business name and contact email are required', 'danger')
+                return render_template('auth/complete_profile.html', user=user)
+            
+            # Connect to database
+            conn = sqlite3.connect(CLIENT_DB_PATH)
+            cursor = conn.cursor()
+            
+            # Create client profile
+            cursor.execute('''
+                INSERT INTO clients (
+                    user_id,
+                    business_name,
+                    contact_email,
+                    contact_phone,
+                    address,
+                    industry,
+                    created_at,
+                    active,
+                    subscription_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'trial')
+            ''', (
+                user['user_id'],
+                business_name,
+                contact_email,
+                contact_phone,
+                address,
+                industry,
+                datetime.now().isoformat()
+            ))
+            
+            conn.commit()
+            conn.close()
+            
+            flash('Profile completed successfully!', 'success')
+            return redirect(url_for('client.dashboard'))
+            
+        except Exception as e:
+            logger.error(f"Error completing profile: {e}")
+            flash('An error occurred while completing your profile', 'danger')
+            return render_template('auth/complete_profile.html', user=user)
+    
+    return render_template('auth/complete_profile.html', user=user)
+
 def generate_session_token():
     """Generate a unique session token"""
     import secrets
