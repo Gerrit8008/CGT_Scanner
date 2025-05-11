@@ -1,35 +1,34 @@
-from database_manager import DatabaseManager
-
-db_manager = DatabaseManager()
-
-def handle_scan_results(client_id, scanner_id, scan_data):
-    """Handle the results of a security scan"""
+def save_scan_results(client_id: int, scanner_id: str, scan_data: dict) -> dict:
+    """Save scan results to client's database"""
     try:
-        # Save scan results to client's specific database
-        success = db_manager.save_scan_result(
-            client_id=client_id,
-            scanner_id=scanner_id,
-            scan_data={
-                'target': scan_data.get('target'),
-                'type': scan_data.get('scan_type', 'general'),
-                'results': json.dumps(scan_data.get('results', {}))
-            }
-        )
-        
-        if success:
+        with get_client_db(db_manager, client_id) as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO scans (
+                    scanner_id, scan_timestamp, target, 
+                    scan_type, status, results, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                scanner_id,
+                datetime.now().isoformat(),
+                scan_data['target'],
+                scan_data['type'],
+                'completed',
+                json.dumps(scan_data['results']),
+                datetime.now().isoformat()
+            ))
+            
+            conn.commit()
+            
             return {
-                'status': 'success',
-                'message': 'Scan results saved successfully'
-            }
-        else:
-            return {
-                'status': 'error',
-                'message': 'Failed to save scan results'
+                "status": "success",
+                "scan_id": cursor.lastrowid
             }
             
     except Exception as e:
         logging.error(f"Error saving scan results: {e}")
         return {
-            'status': 'error',
-            'message': f'Error saving scan results: {str(e)}'
+            "status": "error",
+            "message": str(e)
         }
