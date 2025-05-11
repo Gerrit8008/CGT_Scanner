@@ -1,10 +1,14 @@
-# client_routes.py
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-import os
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
 import logging
+from functools import wraps
 from datetime import datetime
-from client_db import get_db_connection, list_clients, get_client_by_id, update_client
-# Import authentication utilities
+from client_db import (
+    get_client_by_user_id,
+    get_deployed_scanners_by_client_id,
+    get_scan_history_by_client_id,
+    get_client_statistics,
+    get_recent_activities
+)
 from auth_utils import verify_session
 
 # Define client blueprint
@@ -14,6 +18,66 @@ client_bp = Blueprint('client', __name__, url_prefix='/client')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def client_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        session_token = session.get('session_token')
+        
+        if not session_token:
+            logger.debug("No session token found, redirecting to login")
+            return redirect(url_for('auth.login', next=request.url))
+        
+        result = verify_session(session_token)
+        
+        if result['status'] != 'success':
+            logger.debug(f"Invalid session: {result.get('message')}")
+            flash('Please log in to access this page', 'danger')
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if result['user']['role'] != 'client':
+            logger.warning(f"Access denied: User {result['user']['username']} with role {result['user']['role']} attempted to access client area")
+            flash('Access denied. This area is for clients only.', 'danger')
+            return redirect(url_for('auth.login'))
+        
+        kwargs['user'] = result['user']
+        return f(*args, **kwargs)
+    
+    return decorated_function
+
+@client_bp.route('/')
+@client_bp.route('/dashboard')
+@client_required
+def dashboard(user):
+    """Client dashboard"""
+    try:
+        # Get client info for this user
+        client = get_client_by_user_id(user['id'])
+        
+        if not client:
+            logger.info(f"User {user['username']} has no client profile, redirecting to complete_profile")
+            flash('Please complete your client profile', 'info')
+            return redirect(url_for('auth.complete_profile'))
+        
+        # Get client dashboard data
+        deployed_scanners = get_deployed_scanners_by_client_id(client['id'])
+        recent_scans = get_scan_history_by_client_id(client['id'], limit=5)
+        recent_activities = get_recent_activities(client['id'], limit=5)
+        statistics = get_client_statistics(client['id'])
+        
+        return render_template('client/dashboard.html',
+            user=user,
+            client=client,
+            scanners=deployed_scanners,
+            recent_scans=recent_scans,
+            recent_activities=recent_activities,
+            statistics=statistics
+        )
+    except Exception as e:
+        logger.error(f"Error in client dashboard: {str(e)}")
+        flash('An error occurred while loading the dashboard', 'danger')
+        return redirect(url_for('auth.login'))
+        
 # Middleware to require admin login
 def admin_required(f):
     def decorated_function(*args, **kwargs):
