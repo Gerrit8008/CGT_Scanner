@@ -1,35 +1,81 @@
-# This updated auth.py version fixes the user routing based on roles
-import traceback
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-import os
 import logging
+import sqlite3
 from datetime import datetime
-from auth_utils import create_user, authenticate_user, verify_session
-from client_db import register_client, get_client_by_user_id
-
-# Import the fixed authenticate_user function
-from fix_auth import authenticate_user_wrapper as authenticate_user
-from fix_auth import verify_session, logout_user, create_user
-
-# Create authentication blueprint
-auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+from werkzeug.security import generate_password_hash, check_password_hash
+from client_db import CLIENT_DB_PATH, get_client_by_user_id
 
 # Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
-# Login route
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+
+def verify_credentials(username, password):
+    """Verify user credentials and return user info if valid"""
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Get user by username
+        cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
+        user = cursor.fetchone()
+        
+        if not user:
+            logger.warning(f"Login attempt failed: User {username} not found")
+            return {
+                'status': 'error',
+                'message': 'Invalid credentials'
+            }
+        
+        # Check password
+        if not check_password_hash(user['password_hash'], password + user['salt']):
+            logger.warning(f"Login attempt failed: Invalid password for user {username}")
+            return {
+                'status': 'error',
+                'message': 'Invalid credentials'
+            }
+        
+        # Generate session token
+        session_token = generate_session_token()
+        
+        # Store session
+        cursor.execute('''
+            INSERT INTO sessions (user_id, session_token, created_at, expires_at)
+            VALUES (?, ?, ?, datetime('now', '+1 day'))
+        ''', (user['id'], session_token, datetime.now().isoformat()))
+        
+        conn.commit()
+        
+        return {
+            'status': 'success',
+            'session_token': session_token,
+            'user': dict(user)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error verifying credentials: {e}")
+        return {
+            'status': 'error',
+            'message': 'An error occurred while verifying credentials'
+        }
+    finally:
+        if conn:
+            conn.close()
+
+def generate_session_token():
+    """Generate a unique session token"""
+    import secrets
+    return secrets.token_urlsafe(32)
+
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         
-        # Verify credentials and get user info
+        # Verify credentials
         result = verify_credentials(username, password)
         
         if result['status'] == 'success':
@@ -52,146 +98,85 @@ def login():
             return render_template('auth/login.html')
             
     return render_template('auth/login.html')
-    
-# Logout route
-# Update the logout route in auth.py to accept both GET and POST
 
-@auth_bp.route('/logout', methods=['GET', 'POST'])
-def logout():
-    """User logout - accepts both GET and POST methods"""
-    try:
-        # Get session token
-        session_token = session.get('session_token')
-        
-        if session_token:
-            # Use the logout_user function to properly clear session from database
-            result = logout_user(session_token)
-            logging.debug(f"Session logout result: {result}")
-        
-        # Clear the Flask session
-        session.clear()
-        
-        # Flash success message
-        flash('You have been logged out successfully', 'success')
-        
-        # Always redirect to login page after logout, regardless of role
-        return redirect(url_for('auth.login'))
-        
-    except Exception as e:
-        logging.error(f"Error during logout: {e}")
-        # Clear session anyway to ensure logout even if there's an error
-        session.clear()
-        flash('Logout completed', 'info')
-        return redirect(url_for('auth.login'))
-
-# Registration route for clients
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
-    """Client registration page with proper role-based redirection"""
     if request.method == 'POST':
-        # Get user registration data
         username = request.form.get('username')
         email = request.form.get('email')
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
-        full_name = request.form.get('full_name', '')
         
         # Validate input
-        if not username or not email or not password:
+        if not all([username, email, password, confirm_password]):
             flash('All fields are required', 'danger')
             return render_template('auth/register.html')
-        
+            
         if password != confirm_password:
             flash('Passwords do not match', 'danger')
             return render_template('auth/register.html')
         
-        # IMPORTANT: Create user with client role (never admin)
-        user_role = 'client'  # Force client role for registration
-        user_result = create_user(username, email, password, user_role, full_name)
-        
-        if user_result['status'] == 'success':
-            # Get business registration data
-            business_data = {
-                'business_name': request.form.get('business_name', ''),
-                'business_domain': request.form.get('business_domain', ''),
-                'contact_email': email,  # Use the same email as user by default
-                'contact_phone': request.form.get('contact_phone', ''),
-                'scanner_name': request.form.get('scanner_name', '')
-            }
+        try:
+            conn = sqlite3.connect(CLIENT_DB_PATH)
+            cursor = conn.cursor()
             
-            # Register client
-            if business_data['business_name'] and business_data['business_domain']:
-                from client_db import register_client
-                client_result = register_client(user_result['user_id'], business_data)
-                
-                if client_result['status'] == 'success':
-                    flash('Registration successful! You can now log in', 'success')
-                else:
-                    flash(f'User created but client registration failed: {client_result["message"]}', 'warning')
-            else:
-                flash('User created successfully. Please log in and complete your client profile', 'success')
+            # Check if username exists
+            cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+            if cursor.fetchone():
+                flash('Username already exists', 'danger')
+                return render_template('auth/register.html')
             
-            # Redirect to login after successful registration
-            # The login function will then direct them to the client dashboard
+            # Check if email exists
+            cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
+            if cursor.fetchone():
+                flash('Email already registered', 'danger')
+                return render_template('auth/register.html')
+            
+            # Generate salt and hash password
+            import secrets
+            salt = secrets.token_hex(16)
+            password_hash = generate_password_hash(password + salt)
+            
+            # Insert new user
+            cursor.execute('''
+                INSERT INTO users (username, email, password_hash, salt, role, created_at)
+                VALUES (?, ?, ?, ?, 'client', ?)
+            ''', (username, email, password_hash, salt, datetime.now().isoformat()))
+            
+            conn.commit()
+            logger.info(f"Created user: {username} with role: client")
+            
+            flash('Registration successful! Please log in.', 'success')
             return redirect(url_for('auth.login'))
-        else:
-            flash(f'Registration failed: {user_result["message"]}', 'danger')
-    
-    # GET request - show registration form
+            
+        except Exception as e:
+            logger.error(f"Error registering user: {e}")
+            flash('An error occurred during registration', 'danger')
+            return render_template('auth/register.html')
+        finally:
+            if conn:
+                conn.close()
+                
     return render_template('auth/register.html')
 
-@auth_bp.route('/complete-profile', methods=['GET', 'POST'])
-def complete_profile():
-    """Complete user profile after registration"""
-    # Check if user is logged in
-    session_token = session.get('session_token')
-    if not session_token:
-        return redirect(url_for('auth.login'))
-    
-    # Verify session token
-    result = verify_session(session_token)
-    if result['status'] != 'success':
-        flash('Please log in to access this page', 'danger')
-        return redirect(url_for('auth.login'))
-    
-    user = result['user']
-    
-    # Check if user already has a client profile
-    client = get_client_by_user_id(user['user_id'])
-    if client:
-        # Redirect to appropriate dashboard based on role
-        if user['role'] == 'admin':
-            return redirect(url_for('admin.dashboard'))
-        else:
-            return redirect(url_for('client.dashboard'))
-    
-    if request.method == 'POST':
-        # Process the form submission
-        business_data = {
-            'business_name': request.form.get('business_name'),
-            'business_domain': request.form.get('business_domain'),
-            'contact_email': request.form.get('contact_email'),
-            'contact_phone': request.form.get('contact_phone', ''),
-            'scanner_name': request.form.get('scanner_name', request.form.get('business_name', '') + ' Scanner'),
-            'subscription_level': 'basic',  # Default to basic
-            'primary_color': request.form.get('primary_color', '#FF6900'),
-            'secondary_color': request.form.get('secondary_color', '#808588'),
-            'email_subject': request.form.get('email_subject', 'Your Security Scan Report'),
-            'email_intro': request.form.get('email_intro', 'Thank you for using our security scanner.'),
-            'default_scans': request.form.getlist('default_scans') or ['network', 'web', 'email', 'system']
-        }
+@auth_bp.route('/logout')
+def logout():
+    try:
+        # Clear session token from database
+        session_token = session.get('session_token')
+        if session_token:
+            conn = sqlite3.connect(CLIENT_DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM sessions WHERE session_token = ?', (session_token,))
+            conn.commit()
+            conn.close()
         
-        # Register the client
-        result = register_client(user['user_id'], business_data)
+        # Clear session
+        session.clear()
+        flash('You have been logged out', 'info')
         
-        if result['status'] == 'success':
-            flash('Profile created successfully!', 'success')
-            # Redirect to client dashboard
-            return redirect(url_for('client.dashboard'))
-        else:
-            flash(f'Error creating profile: {result.get("message", "Unknown error")}', 'danger')
-            # Stay on the form page
-            return render_template('auth/complete-profile.html', user=user, error=result.get('message'))
-    
-    # Show the profile completion form
-    return render_template('auth/complete-profile.html', user=user)
+    except Exception as e:
+        logger.error(f"Error during logout: {e}")
+        flash('An error occurred during logout', 'danger')
+        
+    return redirect(url_for('auth.login'))
