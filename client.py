@@ -113,10 +113,61 @@ def dashboard(user):
         client = get_client_by_user_id(user['user_id'])
         
         if not client:
-            # Client record doesn't exist yet - redirect to complete profile
-            logger.info(f"User {user['username']} has no client profile, redirecting to complete_profile")
-            flash('Please complete your client profile', 'info')
-            return redirect(url_for('auth.complete_profile'))
+            # Automatically create a default client profile
+            logger.info(f"User {user['username']} has no client profile, creating default one")
+            
+            try:
+                # Create default client data based on user info
+                domain = user['email'].split('@')[-1]
+                business_name = user.get('full_name', '') or user['username']
+                
+                client_data = {
+                    'business_name': business_name,
+                    'business_domain': domain,
+                    'contact_email': user['email'],
+                    'contact_phone': '',
+                    'scanner_name': f"{business_name}'s Scanner",
+                    'subscription_level': 'basic'
+                }
+                
+                # Register the client
+                from auth_utils import register_client
+                client_result = register_client(user['user_id'], client_data)
+                
+                if client_result['status'] == 'success':
+                    # Get newly created client data
+                    client = get_client_by_user_id(user['user_id'])
+                    flash('Default scanner profile created successfully!', 'success')
+                else:
+                    logger.error(f"Failed to create default client profile: {client_result.get('message')}")
+                    flash('Failed to create default client profile. Please contact support.', 'danger')
+                    # Fall through to handle failed creation case
+            except Exception as e:
+                logger.error(f"Error creating default client profile: {str(e)}")
+                flash('Error creating default profile. Please contact support.', 'danger')
+            
+            # If client is still None after trying to create it, use empty defaults
+            if not client:
+                return render_template('client/client-dashboard.html', 
+                                      user=user, 
+                                      user_client={},
+                                      scanners=[],
+                                      scan_history=[],
+                                      total_scans=0,
+                                      client_stats={},
+                                      recent_activities=[],
+                                      scan_trends={'scanner_growth': 0, 'scan_growth': 0},
+                                      critical_issues=0,
+                                      avg_security_score=0,
+                                      critical_issues_trend=0,
+                                      security_score_trend=0,
+                                      security_status='Unknown',
+                                      high_issues=0,
+                                      medium_issues=0,
+                                      recommendations=[],
+                                      scans_used=0,
+                                      scans_limit=50,
+                                      scanner_limit=1)
         
         # Get comprehensive dashboard data - Pass client_id
         dashboard_data = get_client_dashboard_data(client['id'])
@@ -206,6 +257,7 @@ def dashboard(user):
                               scans_limit=50,
                               scanner_limit=1)
 
+
 @client_bp.route('/scanners')
 @client_required
 def scanners(user):
@@ -215,8 +267,9 @@ def scanners(user):
         client = get_client_by_user_id(user['user_id'])
         
         if not client:
-            flash('Please complete your client profile', 'info')
-            return redirect(url_for('auth.complete_profile'))
+            # Instead of redirecting to complete_profile, 
+            # redirect to dashboard which will create the profile
+            return redirect(url_for('client.dashboard'))
         
         # Get pagination parameters
         page = request.args.get('page', 1, type=int)
@@ -244,7 +297,7 @@ def scanners(user):
         logger.error(f"Error displaying client scanners: {str(e)}")
         flash('An error occurred while loading your scanners', 'danger')
         return redirect(url_for('client.dashboard'))
-
+        
 @client_bp.route('/scanners/<int:scanner_id>/view')
 @client_required
 def scanner_view(user, scanner_id):
