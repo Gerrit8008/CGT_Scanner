@@ -1,110 +1,156 @@
-import os
+from pathlib import Path
 import sqlite3
 import logging
+import json
 from datetime import datetime
-from pathlib import Path
 
 class DatabaseManager:
     def __init__(self, base_path='./databases'):
         self.base_path = Path(base_path)
-        self.admin_db_path = self.base_path / 'client_scanner.db'
+        self.admin_db_path = self.base_path / 'admin.db'
         self.base_path.mkdir(exist_ok=True)
         
-        # Initialize admin database
+        # Initialize logging
+        self.logger = logging.getLogger(__name__)
+        
+        # Initialize databases
         self._init_admin_database()
 
     def _init_admin_database(self):
         """Initialize the main admin database"""
-        with open('admin_schema.sql', 'r') as f:
-            schema = f.read()
+        try:
+            conn = sqlite3.connect(self.admin_db_path)
+            cursor = conn.cursor()
             
-        conn = sqlite3.connect(self.admin_db_path)
-        conn.executescript(schema)
-        conn.close()
+            # Create users table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                role TEXT DEFAULT 'client',
+                full_name TEXT,
+                created_at TEXT,
+                last_login TEXT,
+                active INTEGER DEFAULT 1
+            )''')
+            
+            # Create clients table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                business_name TEXT NOT NULL,
+                business_domain TEXT NOT NULL,
+                contact_email TEXT NOT NULL,
+                contact_phone TEXT,
+                subscription_level TEXT DEFAULT 'basic',
+                database_name TEXT UNIQUE,
+                api_key TEXT UNIQUE,
+                created_at TEXT,
+                updated_at TEXT,
+                active INTEGER DEFAULT 1,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )''')
+            
+            # Create deployed_scanners table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS deployed_scanners (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                scanner_name TEXT NOT NULL,
+                api_key TEXT UNIQUE,
+                status TEXT DEFAULT 'active',
+                created_at TEXT,
+                last_active TEXT,
+                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+            )''')
+            
+            conn.commit()
+            
+        except Exception as e:
+            self.logger.error(f"Error initializing admin database: {e}")
+            raise
+        finally:
+            conn.close()
 
-    def create_client_database(self, client_id, business_name):
+    def create_client_database(self, client_id: int, business_name: str) -> str:
         """Create a new database for a client"""
-        # Create sanitized database name
-        db_name = f"client_{client_id}_{business_name.lower().replace(' ', '_')}.db"
-        db_path = self.base_path / db_name
-        
-        # Create the client database using the template
-        with open('client_template.sql', 'r') as f:
-            schema = f.read()
+        try:
+            # Create sanitized database name
+            db_name = f"client_{client_id}_{business_name.lower().replace(' ', '_')}.db"
+            db_path = self.base_path / db_name
             
-        conn = sqlite3.connect(db_path)
-        conn.executescript(schema)
-        conn.close()
-        
-        # Update the main database with the client's database name
-        admin_conn = sqlite3.connect(self.admin_db_path)
-        cursor = admin_conn.cursor()
-        cursor.execute("""
-            UPDATE clients 
-            SET database_name = ? 
-            WHERE id = ?
-        """, (db_name, client_id))
-        admin_conn.commit()
-        admin_conn.close()
-        
-        return db_name
-
-    def get_client_db_connection(self, client_id):
-        """Get a connection to a client's specific database"""
-        admin_conn = sqlite3.connect(self.admin_db_path)
-        cursor = admin_conn.cursor()
-        cursor.execute("SELECT database_name FROM clients WHERE id = ?", (client_id,))
-        result = cursor.fetchone()
-        admin_conn.close()
-        
-        if result:
-            db_path = self.base_path / result[0]
-            if db_path.exists():
-                return sqlite3.connect(db_path)
-        return None
-
-    def create_scanner(self, client_id, scanner_name):
-        """Create a new scanner for a client"""
-        conn = sqlite3.connect(self.admin_db_path)
-        cursor = conn.cursor()
-        
-        # Generate unique API key
-        api_key = f"scanner_{client_id}_{datetime.now().timestamp()}"
-        
-        cursor.execute("""
-            INSERT INTO deployed_scanners (
-                client_id, scanner_name, api_key, created_at, status
-            ) VALUES (?, ?, ?, ?, ?)
-        """, (client_id, scanner_name, api_key, datetime.now().isoformat(), 'active'))
-        
-        scanner_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
-        return scanner_id, api_key
-
-    def save_scan_result(self, client_id, scanner_id, scan_data):
-        """Save scan results to client's database"""
-        client_conn = self.get_client_db_connection(client_id)
-        if not client_conn:
-            return False
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
             
-        cursor = client_conn.cursor()
-        cursor.execute("""
-            INSERT INTO scans (
-                scanner_id, scan_timestamp, target, scan_type, 
-                status, results, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            scanner_id,
-            datetime.now().isoformat(),
-            scan_data['target'],
-            scan_data['type'],
-            'completed',
-            scan_data['results'],
-            datetime.now().isoformat()
-        ))
-        
-        client_conn.commit()
-        client_conn.close()
-        return True
+            # Create scans table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS scans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scanner_id TEXT NOT NULL,
+                scan_timestamp TEXT NOT NULL,
+                target TEXT NOT NULL,
+                scan_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                results TEXT,
+                report_path TEXT,
+                created_at TEXT
+            )''')
+            
+            # Create leads table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scanner_id TEXT NOT NULL,
+                name TEXT,
+                email TEXT NOT NULL,
+                company TEXT,
+                phone TEXT,
+                source TEXT,
+                status TEXT DEFAULT 'new',
+                created_at TEXT,
+                notes TEXT
+            )''')
+            
+            conn.commit()
+            conn.close()
+            
+            # Update main database with the client's database name
+            admin_conn = sqlite3.connect(self.admin_db_path)
+            cursor = admin_conn.cursor()
+            cursor.execute("""
+                UPDATE clients 
+                SET database_name = ? 
+                WHERE id = ?
+            """, (db_name, client_id))
+            admin_conn.commit()
+            admin_conn.close()
+            
+            return db_name
+            
+        except Exception as e:
+            self.logger.error(f"Error creating client database: {e}")
+            raise
+
+    def get_client_connection(self, client_id: int) -> sqlite3.Connection:
+        """Get a connection to a client's database"""
+        try:
+            admin_conn = sqlite3.connect(self.admin_db_path)
+            cursor = admin_conn.cursor()
+            cursor.execute("SELECT database_name FROM clients WHERE id = ?", (client_id,))
+            result = cursor.fetchone()
+            admin_conn.close()
+            
+            if result and result[0]:
+                db_path = self.base_path / result[0]
+                if db_path.exists():
+                    return sqlite3.connect(db_path)
+            
+            raise ValueError(f"No database found for client {client_id}")
+            
+        except Exception as e:
+            self.logger.error(f"Error getting client connection: {e}")
+            raise
