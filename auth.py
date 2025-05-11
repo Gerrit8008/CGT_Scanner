@@ -1,4 +1,3 @@
-# This updated auth.py version fixes the user routing based on roles
 import traceback
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 import os
@@ -7,6 +6,7 @@ from datetime import datetime
 from auth_utils import create_user, authenticate_user, verify_session
 from client_db import register_client, get_client_by_user_id
 from database_manager import DatabaseManager
+from database_utils import get_db_connection
 
 # Import the fixed authenticate_user function
 from fix_auth import authenticate_user_wrapper as authenticate_user
@@ -167,6 +167,48 @@ def register():
             return redirect(url_for('auth.login'))
         else:
             flash(f'Registration failed: {user_result["message"]}', 'danger')
+
+def register_client(user_id: int, business_data: dict) -> dict:
+    """Register a new client and create their database"""
+    try:
+        with get_db_connection(db_manager.admin_db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Insert client record
+            cursor.execute('''
+                INSERT INTO clients (
+                    user_id, business_name, business_domain, 
+                    contact_email, contact_phone, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                user_id,
+                business_data['business_name'],
+                business_data['business_domain'],
+                business_data['contact_email'],
+                business_data.get('contact_phone', ''),
+                datetime.now().isoformat()
+            ))
+            
+            client_id = cursor.lastrowid
+            
+            # Create client's specific database
+            db_name = db_manager.create_client_database(
+                client_id, 
+                business_data['business_name']
+            )
+            
+            return {
+                "status": "success",
+                "client_id": client_id,
+                "database": db_name
+            }
+            
+    except Exception as e:
+        logging.error(f"Error registering client: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 @auth_bp.route('/complete-profile', methods=['GET', 'POST'])
 def complete_profile():
