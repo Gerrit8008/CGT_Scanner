@@ -1,4 +1,4 @@
-# Standard library imports
+
 import logging
 import os
 import sqlite3
@@ -6,36 +6,44 @@ import platform
 import socket
 import re
 import uuid
+from werkzeug.utils import secure_filename
+import urllib.parse
+from datetime import datetime
 import json
 import sys
 import traceback
 import requests
-from datetime import datetime, timedelta
-import secrets  
-
-# Third-party imports
-from werkzeug.utils import secure_filename
-import urllib.parse
+from datetime import timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_login import LoginManager, current_user
-from dotenv import load_dotenv
-
-# Local imports
 from email_handler import send_email_report
 from config import get_config
+from dotenv import load_dotenv
+from flask import Blueprint
+from api import api_bp  # Import the new API blueprint
 from client_db import init_client_db, CLIENT_DB_PATH
-from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
-
-# Blueprint imports - Import each blueprint only once
-from client_routes import client_bp
-from auth import auth_bp  # Import only once from auth.py
+from scanner_router import scanner_bp
+from auth import auth_bp
 from admin import admin_bp
 from api import api_bp
 from scanner_router import scanner_bp
+from setup_admin import configure_admin
+from client import client_bp  
+from flask_login import LoginManager, current_user
+from auth_routes import auth_bp
+from debug_middleware import register_debug_middleware
+from fix_auth import create_user
+from auth import auth_bp
+from auth_hotfix import register_auth_hotfix
 from emergency_access import emergency_bp
+from register_routes import register_all_routes
+from admin_fix_integration import apply_admin_fixes
+from admin_route_fix import apply_admin_route_fixes
+from route_fix import fix_admin_routes
+from admin_fix_web import add_admin_fix_route
+from scanner_preview import scanner_preview_bp
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -107,50 +115,6 @@ GATEWAY_PORT_WARNINGS = {
     22: ("SSH", "Low"),
 }
 
-# Initialize limiter
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
-
-# Configure the app
-app.config.from_object(get_config())
-app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-
-# Enable CORS
-CORS(app)
-
-# Create rate limiter
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"
-)
-
-# Initialize Flask-Login before registering blueprints
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'auth.login'
-
-# Register blueprints in order of priority
-app.register_blueprint(auth_bp)
-app.register_blueprint(admin_bp)
-app.register_blueprint(api_bp)
-app.register_blueprint(scanner_bp)
-app.register_blueprint(client_bp)
-app.register_blueprint(emergency_bp)
-
-
-@app.route('/api/scan', methods=['POST'])    
-@limiter.limit("5 per minute", deduct_when=lambda response: response.status_code == 200)
-def api_scan():
-    try:
-        # Your existing code...
-        pass
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-        
 # Setup logging
 def setup_logging():
     """Configure application logging"""
@@ -218,6 +182,28 @@ def log_system_info():
 # Initialize logging
 logger = setup_logging()
 log_system_info()
+
+def create_app():
+    """Create and configure the Flask application"""
+    from flask import Flask
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    
+    app = Flask(__name__)
+    app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+    
+    # Enable CORS
+    CORS(app)
+    
+    # Create rate limiter
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=["200 per day", "50 per hour"],
+        storage_uri="memory://"
+    )
+    
+    return app, limiter
 
 def init_database():
     """Initialize all database tables if they don't exist"""
@@ -469,6 +455,10 @@ except Exception as register_error:
     logging.error(f"Error registering routes: {register_error}")
     # Still register the basic blueprints
     try:
+        from auth import auth_bp
+        from admin import admin_bp
+        app.register_blueprint(auth_bp)
+        app.register_blueprint(admin_bp)
         logging.info("Registered basic blueprints as fallback")
     except Exception as basic_error:
         logging.error(f"Failed to register basic blueprints: {basic_error}")
@@ -2229,39 +2219,11 @@ def results():
                 logging.error(f"Error generating service categories: {str(cat_error)}")
                 # Initialize with empty categories
                 scan_results['service_categories'] = {
-                'endpoint_security': {
-                    'name': 'Endpoint Security', 
-                    'description': 'Protection for your computers and devices', 
-                    'findings': [], 
-                    'risk_level': 'Low', 
-                    'score': 0, 
-                    'max_score': 0
-                 },
-                'network_defense': {
-                    'name': 'Network Defense',
-                    'description': 'Protection for your network infrastructure',
-                    'findings': [],
-                    'risk_level': 'Low',
-                    'score': 0,
-                    'max_score': 0
-                },
-                'data_protection': {
-                    'name': 'Data Protection',
-                    'description': 'Solutions to secure your business data',
-                    'findings': [],
-                    'risk_level': 'Low',
-                    'score': 0,
-                    'max_score': 0
-                },
-                'access_management': {
-                    'name': 'Access Management',
-                    'description': 'Controls for secure system access',
-                    'findings': [],
-                    'risk_level': 'Low',
-                    'score': 0,
-                    'max_score': 0
+                    'endpoint_security': {'name': 'Endpoint Security', 'description': 'Protection for your computers and devices', 'findings': [], 'risk_level': 'Low', 'score': 0, 'max_score': 0},
+                    'network_defense': {'name': 'Network Defense', 'description': 'Protection for your network infrastructure', 'findings': [], 'risk_level': 'Low', 'score': 0, 'max_score': 0},
+                    'data_protection': {'name': 'Data Protection', 'description': 'Solutions to secure your business data', 'findings': [], 'risk_level': 'Low', 'score': 0, 'max_score': 0},
+                    'access_management': {'name': 'Access Management', 'description': 'Controls for secure system access', 'findings': [], 'risk_level': 'Low', 'score': 0, 'max_score': 0}
                 }
-            }
         
         # Get client IP and gateway info for the template
         client_ip = "Unknown"
@@ -3042,6 +3004,10 @@ def debug_submit():
     except Exception as e:
         return f"Error: {str(e)}"
 
+@app.route('/admin')
+def admin_dashboard_redirect():
+    return redirect(url_for('admin.dashboard'))
+
 @app.route('/admin', endpoint='main_admin_redirect')
 def admin_main_redirect():
     """Redirect to admin dashboard"""
@@ -3411,16 +3377,9 @@ if __name__ == "__main__":
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
 if __name__ == '__main__':
-    # Initialize database and apply fixes
-    init_database()
-    direct_db_fix()
-    
     # Get port from environment variable or use default
     port = int(os.environ.get('PORT', 5000))
+    direct_db_fix()
     
     # Use 0.0.0.0 to make the app accessible from any IP
-    app.run(
-        host='0.0.0.0',
-        port=port,
-        debug=os.environ.get('FLASK_ENV') == 'development'
-    )
+    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
