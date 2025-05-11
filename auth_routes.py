@@ -1,18 +1,23 @@
-# auth_routes.py - Enhanced authentication routes for Flask
-
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
 from werkzeug.utils import secure_filename
 import os
 import logging
 from datetime import datetime
 from flask import Blueprint
-from client_db import CLIENT_DB_PATH, verify_session
+from client_db import CLIENT_DB_PATH, verify_session, register_client
 from auth_utils import verify_session
 from fix_auth import (
     authenticate_user_wrapper as authenticate_user,
     logout_user, 
     create_user
 )
+
+# Initialize logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Initialize database manager
+db_manager = DatabaseManager()
 
 # Create blueprint for authentication routes
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -111,10 +116,9 @@ def admin_required(f):
     decorated_function.__doc__ = f.__doc__
     return decorated_function
 
-# Registration route
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
-    """User registration page"""
+    """User registration page with proper role-based redirection"""
     if request.method == 'POST':
         # Get form data
         username = request.form.get('username')
@@ -127,33 +131,55 @@ def register():
         if not username or not email or not password:
             flash('All fields are required', 'danger')
             return render_template('auth/register.html', 
-                                 username=username, 
-                                 email=email,
-                                 full_name=full_name)
+                                username=username, 
+                                email=email,
+                                full_name=full_name)
         
         if password != confirm_password:
             flash('Passwords do not match', 'danger')
             return render_template('auth/register.html', 
-                                 username=username, 
-                                 email=email,
-                                 full_name=full_name)
+                                username=username, 
+                                email=email,
+                                full_name=full_name)
         
         # Create user
-        result = create_user(username, email, password, full_name)
+        user_result = create_user(username, email, password, full_name)
         
-        if result['status'] == 'success':
-            flash('Registration successful! You can now log in.', 'success')
+        if user_result['status'] == 'success':
+            # Get business registration data
+            business_data = {
+                'business_name': request.form.get('business_name', ''),
+                'business_domain': request.form.get('business_domain', ''),
+                'contact_email': email,
+                'contact_phone': request.form.get('contact_phone', ''),
+                'scanner_name': request.form.get('scanner_name', '')
+            }
+            
+            # If business data was provided, register client
+            if business_data['business_name'] and business_data['business_domain']:
+                try:
+                    client_result = register_client(user_result['user_id'], business_data)
+                    if client_result['status'] == 'success':
+                        flash('Registration successful! Please log in', 'success')
+                    else:
+                        flash('User created but client registration failed: ' + client_result.get('message', 'Unknown error'), 'warning')
+                except Exception as e:
+                    logger.error(f"Error registering client: {e}")
+                    flash('User created but client registration failed', 'warning')
+            else:
+                flash('User created successfully. Please log in and complete your profile', 'success')
+            
             return redirect(url_for('auth.login'))
         else:
-            flash(f'Registration failed: {result["message"]}', 'danger')
+            flash(f'Registration failed: {user_result["message"]}', 'danger')
             return render_template('auth/register.html', 
-                                 username=username, 
-                                 email=email,
-                                 full_name=full_name)
+                                username=username, 
+                                email=email,
+                                full_name=full_name)
     
     # GET request - show registration form
     return render_template('auth/register.html')
-
+    
 # Login route (enhanced)
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
