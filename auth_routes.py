@@ -140,7 +140,26 @@ def register():
         result = create_user(username, email, password, full_name)
         
         if result['status'] == 'success':
-            flash('Registration successful! Please log in', 'success')
+            # Automatically create a client profile for the user
+            # Extract domain from email
+            domain = email.split('@')[-1]
+            business_name = full_name or username
+            
+            client_data = {
+                'business_name': business_name,
+                'business_domain': domain,
+                'contact_email': email,
+                'scanner_name': f"{business_name}'s Scanner"
+            }
+            
+            from auth_utils import register_client
+            client_result = register_client(result['user_id'], client_data)
+            
+            if client_result['status'] == 'success':
+                flash('Registration successful! Please log in', 'success')
+            else:
+                flash(f'Registration successful, but client profile setup failed: {client_result["message"]}. You can complete this later.', 'warning')
+                
             return redirect(url_for('auth.login'))
         else:
             flash(f'Registration failed: {result["message"]}', 'danger')
@@ -151,7 +170,6 @@ def register():
     
     # GET request - show registration form
     return render_template('auth/register.html')
-
     
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
