@@ -2471,56 +2471,44 @@ def clear_session():
         "redirect": url_for('scan_page')
     })
 
-@app.route('/api/scan', methods=['POST'])    
-@limiter.limit("5 per minute")    
+@app.route('/api/scan', methods=['POST'])
+@limiter.limit("5 per minute")
 def api_scan():
     """API endpoint for scan requests"""
     try:
-        # Get lead data from form
-        lead_data = {
-            "name": request.form.get('name', ''),
-            "email": request.form.get('email', ''),
-            "company": request.form.get('company', ''),
-            "phone": request.form.get('phone', ''),
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "client_os": request.form.get('client_os', 'Unknown'),
-            "client_browser": request.form.get('client_browser', 'Unknown'),
-            "windows_version": request.form.get('windows_version', ''),
-            "target": ''  # Start with empty target
-        }
+        # Get client info from authentication
+        client_id = get_client_id_from_request()  # You'll need to implement this
+        scanner_id = request.form.get('scanner_id')
         
-        # Basic validation
-        if not lead_data["email"]:
+        # Run the scan
+        scan_results = run_consolidated_scan(request.form)
+        
+        # Save results using the new database manager
+        save_result = handle_scan_results(
+            client_id=client_id,
+            scanner_id=scanner_id,
+            scan_data=scan_results
+        )
+        
+        if save_result['status'] == 'success':
+            return jsonify({
+                "status": "success",
+                "scan_id": scan_results['scan_id'],
+                "message": "Scan completed and results saved successfully."
+            })
+        else:
             return jsonify({
                 "status": "error",
-                "message": "Please provide an email address to receive the scan report."
-            }), 400
-        
-        # Extract domain from email and use as target
-        domain = extract_domain_from_email(lead_data["email"])
-        lead_data["target"] = domain
-        logging.info(f"Using domain extracted from email: {domain}")
+                "message": save_result['message']
+            }), 500
             
-        # Save lead data
-        save_lead_data(lead_data)
-        
-        # Run the consolidated scan
-        scan_results = run_consolidated_scan(lead_data)
-        
-        # Return a simplified version of the results
-        return jsonify({
-            "status": "success",
-            "scan_id": scan_results['scan_id'],
-            "message": "Scan completed successfully. A detailed report has been sent to your email."
-        })
     except Exception as e:
         logging.error(f"Error in API scan: {e}")
-        logging.debug(f"Exception traceback: {traceback.format_exc()}")
         return jsonify({
             "status": "error",
             "message": f"An error occurred during the scan: {str(e)}"
         }), 500
-
+        
 @app.route('/results_direct')
 def results_direct():
     """Display scan results directly from query parameter"""
