@@ -29,13 +29,20 @@ from client_db import init_client_db, CLIENT_DB_PATH
 from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
 
 # Blueprint imports - Import each blueprint only once
-from api import api_bp
+from client_routes import client_bp  # Change this line
 from auth import auth_bp
 from admin import admin_bp
-from client import client_bp
+from api import api_bp
 from scanner_router import scanner_bp
 from emergency_access import emergency_bp
-from scanner_preview import scanner_preview_bp
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Load configuration
+config = get_config()
+app.config.from_object(config)
+
 
 # Define upload folder for file uploads
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -150,7 +157,6 @@ def create_app():
     from flask_limiter import Limiter
     from flask_limiter.util import get_remote_address
     
-    app = Flask(__name__)
     app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
     
     # Enable CORS
@@ -356,7 +362,6 @@ except Exception as app_create_error:
     logging.error(f"Error creating Flask app: {app_create_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
     # Create a basic app as fallback
-    app = Flask(__name__)
     app.secret_key = 'fallback_secret_key'
     limiter = None
 
