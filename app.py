@@ -424,6 +424,22 @@ def api_your_route():
         'data': your_api_data
     })
 
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    return jsonify({
+        'status': 'error',
+        'message': 'Resource not found'
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    return jsonify({
+        'status': 'error',
+        'message': 'Internal server error'
+    }), 500
+
 @app.route('/auth/your-auth-route')
 @login_required
 def your_auth_route():
