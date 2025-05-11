@@ -124,27 +124,6 @@ def authenticate_user(username_or_email, password, ip_address=None, user_agent=N
         logger.error(f"Authentication error: {e}")
         return {"status": "error", "message": f"Authentication failed: {str(e)}"}
 
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        session_token = session.get('session_token')
-        
-        if not session_token:
-            flash('Please log in to access this page', 'danger')
-            return redirect(url_for('auth.login', next=request.url))
-        
-        result = verify_session(session_token)
-        
-        if result['status'] != 'success':
-            flash('Your session has expired. Please log in again.', 'warning')
-            session.clear()
-            return redirect(url_for('auth.login', next=request.url))
-        
-        kwargs['user'] = result['user']
-        return f(*args, **kwargs)
-    
-    return decorated_function
-
 def verify_session(session_token):
     """
     Verify a session token
