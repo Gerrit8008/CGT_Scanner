@@ -1,8 +1,8 @@
-# setup.py
-import os
-import sys
 import logging
+from database_manager import DatabaseManager
 from datetime import datetime
+import hashlib
+import secrets
 
 # Configure logging
 logging.basicConfig(
@@ -14,30 +14,52 @@ logging.basicConfig(
     ]
 )
 
-# Add the current directory to the path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-# Import the required functions
-from client_db import init_client_db, create_user, authenticate_user
+logger = logging.getLogger(__name__)
 
 def setup_database():
     """Initialize the database and create an admin user"""
-    logging.info("Initializing database...")
-    init_result = init_client_db()
-    
-    if init_result.get("status") != "success":
-        logging.error("Failed to initialize database")
+    try:
+        # Initialize database manager
+        db_manager = DatabaseManager()
+        
+        # Create admin user
+        with sqlite3.connect(db_manager.admin_db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Create salt and hash password
+            salt = secrets.token_hex(16)
+            password_hash = hashlib.pbkdf2_hmac(
+                'sha256', 
+                'SecurePass123'.encode(), 
+                salt.encode(), 
+                100000
+            ).hex()
+            
+            # Insert admin user
+            cursor.execute('''
+                INSERT OR IGNORE INTO users (
+                    username, email, password_hash, salt, 
+                    role, full_name, created_at, active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                'admin',
+                'admin@example.com',
+                password_hash,
+                salt,
+                'admin',
+                'System Administrator',
+                datetime.now().isoformat(),
+                1
+            ))
+            
+            conn.commit()
+            
+        logger.info("Database setup completed successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to setup database: {e}")
         return False
-    
-    logging.info("Creating admin user...")
-    user_result = create_user('admin', 'admin@example.com', 'SecurePass123', 'admin')
-    
-    if user_result.get("status") != "success":
-        logging.error(f"Failed to create admin user: {user_result.get('message', 'Unknown error')}")
-        return False
-    
-    logging.info("Setup completed successfully")
-    return True
 
 if __name__ == "__main__":
     setup_database()
