@@ -3029,13 +3029,6 @@ def debug_submit():
     except Exception as e:
         return f"Error: {str(e)}"
 
-@app.route('/admin')
-@app.route('/admin')
-def admin_dashboard_redirect():
-    """Redirect to admin dashboard"""
-    return redirect(url_for('admin.dashboard'))
-
-# Remove the duplicate route
 @app.route('/admin', endpoint='main_admin_redirect')
 def admin_main_redirect():
     """Redirect to admin dashboard"""
