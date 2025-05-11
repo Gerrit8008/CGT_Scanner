@@ -11,7 +11,7 @@ import sys
 import traceback
 import requests
 from datetime import datetime, timedelta
-import secrets  # Add this
+import secrets  
 
 # Third-party imports
 from werkzeug.utils import secure_filename
@@ -107,8 +107,11 @@ GATEWAY_PORT_WARNINGS = {
     22: ("SSH", "Low"),
 }
 
-# Initialize Flask app
-app = Flask(__name__)
+# Initialize limiter
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"]
 
 # Configure the app
 app.config.from_object(get_config())
@@ -138,6 +141,16 @@ app.register_blueprint(scanner_bp)
 app.register_blueprint(client_bp)
 app.register_blueprint(emergency_bp)
 
+
+@app.route('/api/scan', methods=['POST'])    
+@limiter.limit("5 per minute", deduct_when=lambda response: response.status_code == 200)
+def api_scan():
+    try:
+        # Your existing code...
+        pass
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+        
 # Setup logging
 def setup_logging():
     """Configure application logging"""
