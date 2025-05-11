@@ -112,84 +112,57 @@ def dashboard(user):
         # Get client info for this user
         client = get_client_by_user_id(user['user_id'])
         
+        # No changes to the create_scanner behavior - the critical part is that we
+        # don't redirect to complete_profile, even if client is None
+        # We will use default values for the dashboard if client is None
+        
         if not client:
-            # Automatically create a default client profile
-            logger.info(f"User {user['username']} has no client profile, creating default one")
+            logger.info(f"User {user['username']} has no client profile, using defaults for dashboard")
+            # Create a default client object for the template
+            client = {
+                'id': 0,
+                'business_name': user.get('full_name', '') or user.get('username', 'New Client'),
+                'subscription_level': 'basic'
+            }
             
-            try:
-                # Create default client data based on user info
-                domain = user['email'].split('@')[-1]
-                business_name = user.get('full_name', '') or user['username']
-                
-                client_data = {
-                    'business_name': business_name,
-                    'business_domain': domain,
-                    'contact_email': user['email'],
-                    'contact_phone': '',
-                    'scanner_name': f"{business_name}'s Scanner",
-                    'subscription_level': 'basic'
-                }
-                
-                # Register the client
-                from auth_utils import register_client
-                client_result = register_client(user['user_id'], client_data)
-                
-                if client_result['status'] == 'success':
-                    # Get newly created client data
-                    client = get_client_by_user_id(user['user_id'])
-                    flash('Default scanner profile created successfully!', 'success')
-                else:
-                    logger.error(f"Failed to create default client profile: {client_result.get('message')}")
-                    flash('Failed to create default client profile. Please contact support.', 'danger')
-                    # Fall through to handle failed creation case
-            except Exception as e:
-                logger.error(f"Error creating default client profile: {str(e)}")
-                flash('Error creating default profile. Please contact support.', 'danger')
-            
-            # If client is still None after trying to create it, use empty defaults
-            if not client:
-                return render_template('client/client-dashboard.html', 
-                                      user=user, 
-                                      user_client={},
-                                      scanners=[],
-                                      scan_history=[],
-                                      total_scans=0,
-                                      client_stats={},
-                                      recent_activities=[],
-                                      scan_trends={'scanner_growth': 0, 'scan_growth': 0},
-                                      critical_issues=0,
-                                      avg_security_score=0,
-                                      critical_issues_trend=0,
-                                      security_score_trend=0,
-                                      security_status='Unknown',
-                                      high_issues=0,
-                                      medium_issues=0,
-                                      recommendations=[],
-                                      scans_used=0,
-                                      scans_limit=50,
-                                      scanner_limit=1)
-        
-        # Get comprehensive dashboard data - Pass client_id
-        dashboard_data = get_client_dashboard_data(client['id'])
-        
-        if not dashboard_data:
-            # Fallback to basic data if comprehensive fetch fails
-            scanners = get_deployed_scanners_by_client_id(client['id'])
-            scan_history = get_scan_history_by_client_id(client['id'], limit=5)
-            total_scans = len(get_scan_history_by_client_id(client['id']))
-            
+            # Set default data for the dashboard
+            scanners = []
+            scan_history = []
             dashboard_data = {
                 'client': client,
                 'stats': {
-                    'scanners_count': len(scanners.get('scanners', [])),
-                    'total_scans': total_scans,
-                    'avg_security_score': 75,  # Numeric default
+                    'scanners_count': 0,
+                    'total_scans': 0,
+                    'avg_security_score': 0,
                     'reports_count': 0
                 },
-                'scanners': scanners.get('scanners', []),
+                'scanners': scanners,
                 'scan_history': scan_history,
                 'recent_activities': []
             }
+        else:
+            # Normal flow - get real data for existing client
+            # Get comprehensive dashboard data - Pass client_id
+            dashboard_data = get_client_dashboard_data(client['id'])
+            
+            if not dashboard_data:
+                # Fallback to basic data if comprehensive fetch fails
+                scanners = get_deployed_scanners_by_client_id(client['id'])
+                scan_history = get_scan_history_by_client_id(client['id'], limit=5)
+                total_scans = len(get_scan_history_by_client_id(client['id']))
+                
+                dashboard_data = {
+                    'client': client,
+                    'stats': {
+                        'scanners_count': len(scanners.get('scanners', [])),
+                        'total_scans': total_scans,
+                        'avg_security_score': 75,  # Numeric default
+                        'reports_count': 0
+                    },
+                    'scanners': scanners.get('scanners', []),
+                    'scan_history': scan_history,
+                    'recent_activities': []
+                }
         
         # Ensure all required template variables are present
         stats = dashboard_data['stats']
@@ -206,9 +179,9 @@ def dashboard(user):
             'user_client': dashboard_data['client'],
             'scanners': dashboard_data['scanners'],
             'scan_history': dashboard_data['scan_history'],
-            'total_scans': stats['total_scans'],
+            'total_scans': stats.get('total_scans', 0),
             'client_stats': stats,
-            'recent_activities': dashboard_data['recent_activities'],
+            'recent_activities': dashboard_data.get('recent_activities', []),
             # Add missing variables with proper types
             'scan_trends': {
                 'scanner_growth': 0,
@@ -267,9 +240,20 @@ def scanners(user):
         client = get_client_by_user_id(user['user_id'])
         
         if not client:
-            # Instead of redirecting to complete_profile, 
-            # redirect to dashboard which will create the profile
-            return redirect(url_for('client.dashboard'))
+            # Instead of redirecting to complete_profile, just show empty scanner list
+            flash('Please create your first scanner to get started', 'info')
+            return render_template(
+                'client/scanners.html',
+                user=user,
+                client={
+                    'id': 0,
+                    'business_name': user.get('full_name', '') or user.get('username', 'New Client'),
+                    'subscription_level': 'basic'
+                },
+                scanners=[],
+                pagination={'page': 1, 'per_page': 10, 'total_pages': 1, 'total_count': 0},
+                filters={}
+            )
         
         # Get pagination parameters
         page = request.args.get('page', 1, type=int)
