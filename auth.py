@@ -78,6 +78,47 @@ def complete_profile():
     
     return render_template('auth/complete-profile.html', user=user)
 
+def verify_session(session_token):
+    """Verify a session token"""
+    if not session_token:
+        return {"status": "error", "message": "No session token provided"}
+    
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Find the session and join with user data
+        cursor.execute('''
+            SELECT s.*, u.username, u.email, u.role, u.id as user_id
+            FROM sessions s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.session_token = ? 
+            AND u.active = 1 
+            AND s.expires_at > datetime('now')
+        ''', (session_token,))
+        
+        session = cursor.fetchone()
+        
+        if not session:
+            return {"status": "error", "message": "Invalid or expired session"}
+        
+        return {
+            "status": "success",
+            "user": {
+                "user_id": session['user_id'],
+                "username": session['username'],
+                "email": session['email'],
+                "role": session['role']
+            }
+        }
+    except Exception as e:
+        logger.error(f"Session verification error: {e}")
+        return {"status": "error", "message": "Session verification failed"}
+    finally:
+        if conn:
+            conn.close()
+
 def verify_credentials(username, password):
     """Verify user credentials and return user info if valid"""
     try:
@@ -201,8 +242,20 @@ def complete_profile():
 
 def generate_session_token():
     """Generate a unique session token"""
-    import secrets
-    return secrets.token_urlsafe(32)
+    token = secrets.token_urlsafe(32)
+    
+    # Verify token doesn't exist in database
+    conn = sqlite3.connect(CLIENT_DB_PATH)
+    cursor = conn.cursor()
+    
+    while True:
+        cursor.execute('SELECT id FROM sessions WHERE session_token = ?', (token,))
+        if not cursor.fetchone():
+            break
+        token = secrets.token_urlsafe(32)
+    
+    conn.close()
+    return token
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
