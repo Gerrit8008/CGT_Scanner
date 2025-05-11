@@ -406,6 +406,67 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
 
+@app.route('/your-route')
+def your_route():
+    """Route description"""
+    return jsonify({'status': 'success', 'data': your_data})
+
+@app.route('/your-route-with-params/<param_id>')
+def your_route_with_params(param_id):
+    """Route with parameters description"""
+    return jsonify({'status': 'success', 'param': param_id})
+
+@app.route('/api/v1/your-api-route')
+def api_your_route():
+    """API endpoint description"""
+    return jsonify({
+        'status': 'success',
+        'data': your_api_data
+    })
+
+@admin_routes_bp.route('/your-admin-route')
+@admin_required
+def your_admin_route(user):
+    """Admin route description"""
+    return jsonify({
+        'status': 'success',
+        'admin_data': get_admin_data()
+    })
+
+@admin_routes_bp.route('/your-admin-route/<resource_id>')
+@admin_required
+def your_admin_resource(user, resource_id):
+    """Admin resource route description"""
+    return jsonify({
+        'status': 'success',
+        'resource': get_resource(resource_id)
+    })
+
+@app.route('/auth/your-auth-route')
+@login_required
+def your_auth_route():
+    """Protected route description"""
+    return jsonify({
+        'status': 'success',
+        'user_data': get_user_data()
+    })
+    
+@app.route('/api/v1/your-api-route', methods=['POST'])
+def api_post_route():
+    """API POST endpoint description"""
+    data = request.get_json()
+    # Process your data here
+    return jsonify({
+        'status': 'success',
+        'message': 'Data processed successfully'
+    })
+
+@app.route('/your-post-route', methods=['POST'])
+def your_post_route():
+    """POST route description"""
+    data = request.get_json()
+    return jsonify({'status': 'success', 'received': data})
+
 @login_manager.user_loader
 def load_user(user_id):
     try:
