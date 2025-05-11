@@ -44,6 +44,9 @@ from admin_route_fix import apply_admin_route_fixes
 from route_fix import fix_admin_routes
 from admin_fix_web import add_admin_fix_route
 from scanner_preview import scanner_preview_bp
+from database_manager import DatabaseManager
+from database_utils import get_db_connection, get_client_db
+
 # Import scan functionality
 from scan import (
     extract_domain_from_email,
@@ -85,6 +88,9 @@ os.makedirs(os.path.dirname(CLIENT_DB_PATH), exist_ok=True)
 
 # Import database functionality
 from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
+
+# Initialize database manager
+db_manager = DatabaseManager()
 
 # Load environment variables
 load_dotenv()
@@ -2477,30 +2483,36 @@ def api_scan():
     """API endpoint for scan requests"""
     try:
         # Get client info from authentication
-        client_id = get_client_id_from_request()  # You'll need to implement this
+        client_id = get_client_id_from_request()
         scanner_id = request.form.get('scanner_id')
         
         # Run the scan
         scan_results = run_consolidated_scan(request.form)
         
-        # Save results using the new database manager
-        save_result = handle_scan_results(
-            client_id=client_id,
-            scanner_id=scanner_id,
-            scan_data=scan_results
-        )
-        
-        if save_result['status'] == 'success':
-            return jsonify({
-                "status": "success",
-                "scan_id": scan_results['scan_id'],
-                "message": "Scan completed and results saved successfully."
-            })
-        else:
-            return jsonify({
-                "status": "error",
-                "message": save_result['message']
-            }), 500
+        # Save to client's database
+        with get_client_db(db_manager, client_id) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO scans (
+                    scanner_id, scan_timestamp, target, 
+                    scan_type, status, results, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                scanner_id,
+                datetime.now().isoformat(),
+                scan_results['target'],
+                scan_results['type'],
+                'completed',
+                json.dumps(scan_results['results']),
+                datetime.now().isoformat()
+            ))
+            conn.commit()
+            
+        return jsonify({
+            "status": "success",
+            "scan_id": scan_results['scan_id'],
+            "message": "Scan completed successfully."
+        })
             
     except Exception as e:
         logging.error(f"Error in API scan: {e}")
