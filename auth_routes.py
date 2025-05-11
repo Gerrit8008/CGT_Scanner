@@ -204,7 +204,8 @@ def login():
             if result['role'] == 'admin':
                 return redirect(url_for('admin.dashboard'))
             else:
-                # For clients, always go to client dashboard
+                # For clients, always go to client dashboard 
+                # This bypasses any complete_profile redirection
                 return redirect(url_for('client.dashboard'))
         else:
             flash(result['message'], 'danger')
