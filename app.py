@@ -37,44 +37,9 @@ from scanner_router import scanner_bp
 from emergency_access import emergency_bp
 from scanner_preview import scanner_preview_bp
 
-# Scan functionality imports
-from scan import (
-    extract_domain_from_email,
-    server_lookup,
-    get_client_and_gateway_ip,
-    categorize_risks_by_services,
-    get_default_gateway_ip,
-    scan_gateway_ports,
-    check_ssl_certificate,
-    check_security_headers,
-    detect_cms,
-    analyze_cookies,
-    detect_web_framework,
-    crawl_for_sensitive_content,
-    generate_threat_scenario,
-    analyze_dns_configuration,
-    check_spf_status,
-    check_dmarc_record,
-    check_dkim_record,
-    check_os_updates,
-    check_firewall_status,
-    check_open_ports,
-    analyze_port_risks,
-    calculate_risk_score,
-    get_severity_level,
-    get_recommendations,
-    generate_html_report,
-    determine_industry,
-    get_industry_benchmarks,
-    calculate_industry_percentile
-)
-
 # Define upload folder for file uploads
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-if app.config['ENV'] == 'development':
-    app.debug = True
 
 # Make sure the directory exists
 os.makedirs(os.path.dirname(CLIENT_DB_PATH), exist_ok=True)
@@ -198,6 +163,10 @@ def create_app():
         default_limits=["200 per day", "50 per hour"],
         storage_uri="memory://"
     )
+    
+    # Set debug mode based on environment
+    if app.config['ENV'] == 'development':
+        app.debug = True
     
     return app, limiter
 
@@ -410,16 +379,52 @@ def load_user(user_id):
         logging.error(f"Error loading user {user_id}: {e}")
         return None
 
-# Apply admin configuration
+# Apply admin configuration - ONLY AFTER app is created
 try:
+    # Import the function here to avoid circular imports
+    from admin_fix import configure_admin
     app = configure_admin(app)
     logging.info("Admin configuration applied successfully")
 except Exception as config_error:
     logging.error(f"Error applying admin configuration: {config_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
-# Register blueprints
+# Import scan functionality
+from scan import (
+    extract_domain_from_email,
+    server_lookup,
+    get_client_and_gateway_ip,
+    categorize_risks_by_services,
+    get_default_gateway_ip,
+    scan_gateway_ports,
+    check_ssl_certificate,
+    check_security_headers,
+    detect_cms,
+    analyze_cookies,
+    detect_web_framework,
+    crawl_for_sensitive_content,
+    generate_threat_scenario,
+    analyze_dns_configuration,
+    check_spf_status,
+    check_dmarc_record,
+    check_dkim_record,
+    check_os_updates,
+    check_firewall_status,
+    check_open_ports,
+    analyze_port_risks,
+    calculate_risk_score,
+    get_severity_level,
+    get_recommendations,
+    generate_html_report,
+    determine_industry,
+    get_industry_benchmarks,
+    calculate_industry_percentile
+)
+
+# Register blueprints - ONLY AFTER app is created
 try:
+    # Import the function here to avoid circular imports
+    from admin_fix import register_debug_middleware
     register_debug_middleware(app)
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -433,8 +438,10 @@ except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
-# Apply fixes
+# Apply fixes - ONLY AFTER app is created
 try:
+    # Import the functions here to avoid circular imports
+    from admin_fix import apply_admin_fixes, add_admin_fix_route
     apply_admin_fixes(app)
     add_admin_fix_route(app)
     logging.info("Fixes applied successfully")
@@ -442,7 +449,7 @@ except Exception as fix_error:
     logging.error(f"Error applying fixes: {fix_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
-# Register routes
+# Register routes - ONLY AFTER app is created
 try:
     from register_routes import register_all_routes
     app = register_all_routes(app)
@@ -3365,15 +3372,39 @@ def apply_route_fixes():
 
 if __name__ == "__main__":
     apply_route_fixes()
-
-
     
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
 if __name__ == '__main__':
+    # Apply route fixes if needed
+    try:
+        # Apply auth routes fix
+        try:
+            from auth_fix import fix_auth_routes
+            auth_fixed = fix_auth_routes(app)
+            print(f"Auth routes fix: {'Success' if auth_fixed else 'Failed'}")
+        except Exception as e:
+            print(f"Auth routes fix failed: {str(e)}")
+            auth_fixed = False
+        
+        # Apply admin routes fix
+        try:
+            from route_fix import fix_admin_routes
+            admin_fixed = fix_admin_routes(app)
+            print(f"Admin routes fix: {'Success' if admin_fixed else 'Failed'}")
+        except Exception as e:
+            print(f"Admin routes fix failed: {str(e)}")
+            admin_fixed = False
+        
+        if auth_fixed and admin_fixed:
+            print("All route fixes applied successfully!")
+        else:
+            print("Some route fixes could not be applied.")
+    except Exception as e:
+        print(f"Error applying route fixes: {str(e)}")
+    
     # Get port from environment variable or use default
     port = int(os.environ.get('PORT', 5000))
-    direct_db_fix()
     
     # Use 0.0.0.0 to make the app accessible from any IP
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
