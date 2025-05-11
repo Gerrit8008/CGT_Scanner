@@ -191,7 +191,7 @@ def preview_scanner(scanner_id):
         'default_scans': json.loads(customization['default_scans']) if customization and customization['default_scans'] else ['network', 'web', 'email', 'ssl']
     }
     
-    return render_template('scanner_preview.html', **preview_data)
+    return render_template('client/scanner_preview.html', **preview_data)
 
 @scanner_preview_bp.route('/api/scanner/run-scan', methods=['POST'])
 @require_login
