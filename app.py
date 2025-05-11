@@ -46,6 +46,7 @@ from admin_fix_web import add_admin_fix_route
 from scanner_preview import scanner_preview_bp
 from database_manager import DatabaseManager
 from database_utils import get_db_connection, get_client_db
+from flask_login import LoginManager, current_user, login_required  # Add login_required here
 
 # Import scan functionality
 from scan import (
@@ -406,23 +407,23 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
 
-@app.route('/your-route')
-def your_route():
-    """Route description"""
-    return jsonify({'status': 'success', 'data': your_data})
+#@app.route('/your-route')
+#def your_route():
+#    """Route description"""
+#    return jsonify({'status': 'success', 'data': your_data})
 
-@app.route('/your-route-with-params/<param_id>')
-def your_route_with_params(param_id):
-    """Route with parameters description"""
-    return jsonify({'status': 'success', 'param': param_id})
+#@app.route('/your-route-with-params/<param_id>')
+#def your_route_with_params(param_id):
+#    """Route with parameters description"""
+#    return jsonify({'status': 'success', 'param': param_id})
 
-@app.route('/api/v1/your-api-route')
-def api_your_route():
-    """API endpoint description"""
-    return jsonify({
-        'status': 'success',
-        'data': your_api_data
-    })
+#@app.route('/api/v1/your-api-route')
+#def api_your_route():
+#    """API endpoint description"""
+#    return jsonify({
+#        'status': 'success',
+ #       'data': your_api_data
+ #   })
 
 @app.errorhandler(404)
 def not_found_error(error):
@@ -440,30 +441,30 @@ def internal_error(error):
         'message': 'Internal server error'
     }), 500
 
-@app.route('/auth/your-auth-route')
-@login_required
-def your_auth_route():
-    """Protected route description"""
-    return jsonify({
-        'status': 'success',
-        'user_data': get_user_data()
-    })
+#@app.route('/auth/your-auth-route')
+#@login_required
+#def your_auth_route():
+#    """Protected route description"""
+#    return jsonify({
+#        'status': 'success',
+#        'user_data': get_user_data()
+#    })
     
-@app.route('/api/v1/your-api-route', methods=['POST'])
-def api_post_route():
-    """API POST endpoint description"""
-    data = request.get_json()
-    # Process your data here
-    return jsonify({
-        'status': 'success',
-        'message': 'Data processed successfully'
-    })
+#@app.route('/api/v1/your-api-route', methods=['POST'])
+#def api_post_route():
+#    """API POST endpoint description"""
+#    data = request.get_json()
+#    # Process your data here
+#    return jsonify({
+ #       'status': 'success',
+#        'message': 'Data processed successfully'
+ #   })
 
-@app.route('/your-post-route', methods=['POST'])
-def your_post_route():
-    """POST route description"""
-    data = request.get_json()
-    return jsonify({'status': 'success', 'received': data})
+#@app.route('/your-post-route', methods=['POST'])
+#def your_post_route():
+#    """POST route description"""
+#    data = request.get_json()
+#    return jsonify({'status': 'success', 'received': data})
 
 @login_manager.user_loader
 def load_user(user_id):
