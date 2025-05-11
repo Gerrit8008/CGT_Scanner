@@ -300,8 +300,34 @@ def get_user_by_id(user_id):
     return {"status": "error", "message": "User not found"}
 
 def update_user(user_id, user_data, admin_id):
-    """Simple placeholder function"""
-    return {"status": "error", "message": "Function not implemented"}
+    """Update user information"""
+    conn = get_db_connection()
+    try:
+        # Validate user data
+        if not validate_user_data(user_data):
+            return {"status": "error", "message": "Invalid user data"}
+            
+        # Update user record
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE users 
+            SET full_name = ?, email = ?, updated_at = ?, updated_by = ?
+            WHERE id = ?
+        """, (
+            user_data['full_name'],
+            user_data['email'],
+            datetime.now().isoformat(),
+            admin_id,
+            user_id
+        ))
+        conn.commit()
+        
+        return {"status": "success", "message": "User updated successfully"}
+    except Exception as e:
+        conn.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        conn.close()
 
 def delete_user(user_id, admin_id):
     """Simple placeholder function"""
