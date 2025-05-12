@@ -573,6 +573,57 @@
                 }
             }
             
+            async function submitScannerForm(event) {
+                event.preventDefault();
+    
+                try {
+                    // Validate required fields
+                    const scannerName = document.getElementById('scannerName').value;
+                    const businessDomain = document.getElementById('businessDomain').value;
+        
+                        if (!scannerName || !businessDomain) {
+                        alert('Scanner name and business domain are required');
+                        return;
+                    }
+        
+                    const formData = {
+                        scannerName: scannerName,
+                        businessDomain: businessDomain,
+                        contactEmail: document.getElementById('contactEmail').value,
+                        primaryColor: document.getElementById('primaryColor').value,
+                        secondaryColor: document.getElementById('secondaryColor').value,
+                        emailSubject: document.getElementById('emailSubject').value,
+                        emailIntro: document.getElementById('emailIntro').value,
+                        defaultScans: []
+                    };
+        
+                    // Collect selected scan options
+                    ['networkScan', 'webScan', 'emailScan', 'sslScan'].forEach(scanType => {
+                        if (document.getElementById(scanType).checked) {
+                            formData.defaultScans.push(scanType.replace('Scan', ''));
+                        }
+                    });
+        
+                    const response = await fetch('/customize', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(formData)
+                        });
+        
+                    const result = await response.json();
+        
+                    if (result.status === 'success') {
+                        window.location.href = result.preview_url;
+                    } else {
+                        alert(result.message || 'Error creating scanner');
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                    alert('An error occurred while creating the scanner');
+                }
+            }
             async submitScanner(formData, previewOnly) {
                 // Show loading state
                 document.getElementById('scannerConfigForm').style.opacity = '0.6';
