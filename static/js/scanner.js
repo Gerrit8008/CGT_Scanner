@@ -89,3 +89,70 @@ document.addEventListener('DOMContentLoaded', () => {
         saveAndPreviewBtn.addEventListener('click', saveAndPreviewScanner);
     }
 });
+// Show loading state
+const setLoading = (isLoading) => {
+    const saveAndPreviewBtn = document.getElementById('saveAndPreviewBtn');
+    if (saveAndPreviewBtn) {
+        saveAndPreviewBtn.disabled = isLoading;
+        saveAndPreviewBtn.innerHTML = isLoading ? 
+            '<span class="spinner-border spinner-border-sm me-2"></span>Saving...' :
+            '<i class="bi bi-eye me-2"></i>Save & Preview Scanner';
+    }
+};
+
+// Show success message
+const showSuccess = (message) => {
+    const successElement = document.getElementById('successDisplay');
+    if (successElement) {
+        successElement.textContent = message;
+        successElement.style.display = 'block';
+        // Hide after 3 seconds
+        setTimeout(() => {
+            successElement.style.display = 'none';
+        }, 3000);
+    }
+};
+
+// Update the saveAndPreviewScanner function
+const saveAndPreviewScanner = async () => {
+    try {
+        setLoading(true);
+        hideError();
+        
+        const formData = {
+            companyName: document.getElementById('companyName').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            phone: document.getElementById('phone').value.trim(),
+        };
+
+        if (!validateFormData(formData)) {
+            setLoading(false);
+            return;
+        }
+
+        const response = await saveScanner(formData);
+        
+        if (response.success) {
+            showSuccess('Scanner saved successfully!');
+            // Wait a moment to show the success message
+            setTimeout(() => {
+                window.location.href = `/scanner/preview/${response.scannerId}`;
+            }, 1000);
+        } else {
+            showError(response.error || 'Failed to save scanner');
+        }
+    } catch (error) {
+        console.error('Error in saveAndPreviewScanner:', error);
+        showError('An unexpected error occurred');
+    } finally {
+        setLoading(false);
+    }
+};
+
+// Hide error message
+const hideError = () => {
+    const errorElement = document.getElementById('errorDisplay');
+    if (errorElement) {
+        errorElement.style.display = 'none';
+    }
+};
