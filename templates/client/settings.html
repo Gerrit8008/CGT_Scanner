@@ -629,7 +629,53 @@
             
             this.submit();
         });
-        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add submit event handlers to all settings forms
+            const profileForm = document.getElementById('profileForm');
+            if (profileForm) {
+                profileForm.addEventListener('submit', function(e) {
+                    // Optional: Show a loading state on the button
+                    const submitBtn = document.getElementById('saveProfileBtn');
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+                    }
+                            
+                    // Let form submit normally - no need to prevent default
+                    console.log('Profile form submitted');
+                });
+            }
+        // Debug form submissions
+        const originalSubmit = HTMLFormElement.prototype.submit;
+        HTMLFormElement.prototype.submit = function() {
+            console.log('Form submitted programmatically:', this);
+            return originalSubmit.apply(this, arguments);
+        };
+
+        // Explicitly add event handlers to all form buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('button[type="submit"]').forEach(function(button) {
+                button.addEventListener('click', function(e) {
+                    console.log('Submit button clicked:', this);
+                    // Find the closest form and explicitly call submit()
+                    const form = this.closest('form');
+                    if (form) {
+                        console.log('Found parent form:', form);
+                    }
+                });
+            });
+        });
+            // Debug helper to check if forms exist
+            console.log('Profile form found:', !!profileForm);
+    
+            // Add form submission debugging for all forms
+            document.querySelectorAll('form').forEach(function(form, index) {
+                console.log(`Form ${index} action:`, form.action, 'method:', form.method);
+                form.addEventListener('submit', function(e) {
+                    console.log(`Form ${index} submitted`);
+                });
+            });
+        });
         // Disable two-factor authentication
         document.getElementById('disableTwoFactor')?.addEventListener('click', function() {
             if (confirm('Are you sure you want to disable two-factor authentication? This will make your account less secure.')) {
