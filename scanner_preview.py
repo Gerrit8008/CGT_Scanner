@@ -164,8 +164,6 @@ def save_logo_from_base64(base64_data, scanner_id):
 def customize_preview_scanner():
     """Main scanner creation/customization page for preview"""
     # Get the current user's ID from session at the start
-    from flask import session, request, jsonify, render_template
-    import logging
     from client_db import create_client, get_client_by_user_id
 
     user_id = session.get('user_id')
