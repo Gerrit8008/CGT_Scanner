@@ -12,6 +12,7 @@ import re
 import logging 
 from werkzeug.utils import secure_filename
 from contextlib import contextmanager
+from client_db import CLIENT_DB_PATH
 
 scanner_preview_bp = Blueprint('scanner_preview', __name__)
 
@@ -59,6 +60,46 @@ def require_login(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def get_client_by_user_id(user_id):
+    """Get client data for a specific user"""
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
+                   cu.default_scans, ds.subdomain, ds.deploy_status
+            FROM clients c
+            LEFT JOIN customizations cu ON c.id = cu.client_id
+            LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
+            WHERE c.user_id = ? AND c.active = 1
+        ''', (user_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return None
+            
+        # Convert row to dict
+        client_data = dict(row)
+        
+        # Convert default_scans JSON to list if present
+        if client_data.get('default_scans'):
+            try:
+                client_data['default_scans'] = json.loads(client_data['default_scans'])
+            except json.JSONDecodeError:
+                client_data['default_scans'] = []
+        else:
+            client_data['default_scans'] = []
+            
+        return client_data
+    except Exception as e:
+        import logging
+        logging.error(f"Error getting client by user_id: {str(e)}")
+        return None
+
 def get_client_id_from_session():
     """Get client ID from session"""
     user_id = session.get('user_id')
@@ -99,6 +140,146 @@ def generate_subdomain(scanner_name):
     
     conn.close()
     return subdomain
+
+def create_client(client_data, user_id=None):
+    """Create a new client record"""
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Generate API key
+        api_key = str(uuid.uuid4())
+        
+        # Prepare client data
+        now = datetime.now().isoformat()
+        
+        # Extract/validate required fields
+        business_name = client_data.get('business_name', client_data.get('scannerName', ''))
+        business_domain = client_data.get('business_domain', client_data.get('businessDomain', ''))
+        contact_email = client_data.get('contact_email', client_data.get('contactEmail', ''))
+        
+        if not business_name or not business_domain or not contact_email:
+            conn.close()
+            return {'status': 'error', 'message': 'Missing required fields'}
+        
+        # Get or create user_id if not provided
+        if not user_id:
+            user_id = session.get('user_id')
+            
+        if not user_id:
+            conn.close()
+            return {'status': 'error', 'message': 'User ID not provided or found in session'}
+        
+        # Insert the client
+        cursor.execute("""
+            INSERT INTO clients (
+                user_id, business_name, business_domain, contact_email, contact_phone,
+                scanner_name, subscription_level, subscription_status,
+                api_key, created_at, created_by, active, primary_color, secondary_color
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        """, (
+            user_id,
+            business_name,
+            business_domain,
+            contact_email,
+            client_data.get('contact_phone', client_data.get('contactPhone', '')),
+            client_data.get('scanner_name', business_name),
+            client_data.get('subscription', 'basic'),
+            'active',
+            api_key,
+            now,
+            user_id,
+            client_data.get('primaryColor', '#FF6900'),
+            client_data.get('secondaryColor', '#808588')
+        ))
+        
+        # Get the new client ID
+        client_id = cursor.lastrowid
+        
+        # Insert customization data if provided
+        customization_data = {
+            'client_id': client_id,
+            'primary_color': client_data.get('primaryColor', client_data.get('primary_color', '#FF6900')),
+            'secondary_color': client_data.get('secondaryColor', client_data.get('secondary_color', '#808588')),
+            'last_updated': now,
+            'updated_by': user_id
+        }
+        
+        # Add optional customization fields if provided
+        for field in ['logo_path', 'favicon_path', 'email_subject', 'email_intro', 'email_footer']:
+            field_key = field
+            alt_key = ''.join(word.capitalize() if i > 0 else word for i, word in enumerate(field.split('_')))
+            
+            if field_key in client_data and client_data[field_key]:
+                customization_data[field_key] = client_data[field_key]
+            elif alt_key in client_data and client_data[alt_key]:
+                customization_data[field_key] = client_data[alt_key]
+        
+        # Store default_scans as JSON string if provided
+        if 'default_scans' in client_data and client_data['default_scans']:
+            if isinstance(client_data['default_scans'], list):
+                customization_data['default_scans'] = json.dumps(client_data['default_scans'])
+            else:
+                customization_data['default_scans'] = client_data['default_scans']
+        elif 'defaultScans' in client_data and client_data['defaultScans']:
+            if isinstance(client_data['defaultScans'], list):
+                customization_data['default_scans'] = json.dumps(client_data['defaultScans'])
+            else:
+                customization_data['default_scans'] = client_data['defaultScans']
+        
+        # Insert customizations
+        columns = ', '.join(customization_data.keys())
+        placeholders = ', '.join(['?'] * len(customization_data))
+        cursor.execute(f"INSERT INTO customizations ({columns}) VALUES ({placeholders})",
+                      list(customization_data.values()))
+        
+        # Generate subdomain for scanner
+        subdomain = business_name.lower().replace(' ', '-')
+        subdomain = ''.join(c for c in subdomain if c.isalnum() or c == '-')
+        
+        # Check if subdomain exists, add random suffix if needed
+        cursor.execute("SELECT id FROM deployed_scanners WHERE subdomain = ?", (subdomain,))
+        if cursor.fetchone():
+            import random
+            subdomain = f"{subdomain}-{random.randint(100, 999)}"
+        
+        # Create a deployed scanner record
+        cursor.execute("""
+            INSERT INTO deployed_scanners (
+                client_id, subdomain, deploy_status, deploy_date, 
+                last_updated, template_version
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            client_id,
+            subdomain,
+            'pending',  # New scanners start as pending
+            now,
+            now,
+            '1.0'
+        ))
+        
+        scanner_id = cursor.lastrowid
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            'status': 'success', 
+            'client_id': client_id,
+            'scanner_id': scanner_id,
+            'api_key': api_key
+        }
+        
+    except Exception as e:
+        import logging
+        logging.error(f"Error creating client: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return {'status': 'error', 'message': str(e)}
 
 def save_logo_from_base64(base64_data, scanner_id):
     """Save logo from base64 data with improved validation"""
@@ -158,7 +339,28 @@ def save_logo_from_base64(base64_data, scanner_id):
         if 'temp_filepath' in locals() and os.path.exists(temp_filepath):
             os.unlink(temp_filepath)
         return None
-
+        
+@app.route('/check_db_schema')
+def check_db_schema():
+    """Temporary endpoint to check database schema"""
+    conn = sqlite3.connect(CLIENT_DB_PATH)
+    cursor = conn.cursor()
+    
+    # Check clients table schema
+    cursor.execute("PRAGMA table_info(clients)")
+    client_columns = [col[1] for col in cursor.fetchall()]
+    
+    # Check customizations table schema
+    cursor.execute("PRAGMA table_info(customizations)")
+    custom_columns = [col[1] for col in cursor.fetchall()]
+    
+    conn.close()
+    
+    return jsonify({
+        'clients_table_columns': client_columns,
+        'customizations_table_columns': custom_columns
+    })
+    
 @scanner_preview_bp.route('/preview/customize', methods=['GET', 'POST'])
 @require_login
 def customize_preview_scanner():
@@ -191,26 +393,23 @@ def customize_preview_scanner():
                     'message': 'Scanner name and business domain are required'
                 }), 400
             
-            # Format the client data properly
-            formatted_client_data = {
-                'business_name': client_data.get('scannerName'),
-                'business_domain': client_data.get('businessDomain'),
-                'contact_email': client_data.get('contactEmail'),
-                'contact_phone': client_data.get('contactPhone', ''),
-                'scanner_name': client_data.get('scannerName'),
-                'primary_color': client_data.get('primaryColor', '#FF6900'),
-                'secondary_color': client_data.get('secondaryColor', '#808588'),
-                'email_subject': client_data.get('emailSubject', 'Your Security Scan Report'),
-                'email_intro': client_data.get('emailIntro', ''),
-                'subscription': client_data.get('subscription', 'basic'),
-                'default_scans': client_data.get('defaultScans', [])
-            }
-            
             # Create or update client
-            client = create_client(user_id)
-            
-            # Create scanner
-            scanner_id = create_scanner(formatted_client_data)
+            client = get_client_by_user_id(user_id)
+            if not client:
+                # Create new client
+                client_result = create_client(client_data, user_id)
+                if client_result['status'] != 'success':
+                    return jsonify({
+                        'status': 'error',
+                        'message': client_result.get('message', 'Failed to create client')
+                    }), 500
+                client_id = client_result['client_id']
+                scanner_id = client_result['scanner_id'] 
+            else:
+                # Use existing client
+                client_id = client['id']
+                # Create scanner for existing client
+                scanner_id = create_scanner(client_data)
             
             return jsonify({
                 'status': 'success',
