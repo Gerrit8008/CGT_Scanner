@@ -340,7 +340,7 @@ def save_logo_from_base64(base64_data, scanner_id):
             os.unlink(temp_filepath)
         return None
         
-@app.route('/check_db_schema')
+@scanner_preview_bp.route('/check_db_schema')
 def check_db_schema():
     """Temporary endpoint to check database schema"""
     conn = sqlite3.connect(CLIENT_DB_PATH)
