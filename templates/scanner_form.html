@@ -1,0 +1,46 @@
+<div class="container mt-4">
+    <h2>Create New Scanner</h2>
+    
+    <!-- Error Display -->
+    <div id="errorDisplay" class="alert alert-danger" style="display: none;"></div>
+    
+    <!-- Success Display -->
+    <div id="successDisplay" class="alert alert-success" style="display: none;"></div>
+    
+    <!-- Scanner Form -->
+    <form id="scannerForm" class="needs-validation" novalidate>
+        <div class="mb-3">
+            <label for="companyName" class="form-label">Company Name *</label>
+            <input type="text" class="form-control" id="companyName" name="companyName" required>
+            <div class="invalid-feedback">
+                Please provide a company name.
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label for="email" class="form-label">Email *</label>
+            <input type="email" class="form-control" id="email" name="email" required>
+            <div class="invalid-feedback">
+                Please provide a valid email address.
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label for="phone" class="form-label">Phone Number *</label>
+            <input type="tel" class="form-control" id="phone" name="phone" required>
+            <div class="invalid-feedback">
+                Please provide a valid phone number.
+            </div>
+        </div>
+
+        <div class="d-grid gap-2 mb-4">
+            <button type="button" class="btn btn-primary" id="saveAndPreviewBtn">
+                <i class="bi bi-eye me-2"></i>Save & Preview Scanner
+            </button>
+
+            <button type="button" class="btn btn-success" id="saveAndDeployBtn">
+                <i class="bi bi-rocket me-2"></i>Save & Deploy Scanner
+            </button>
+        </div>
+    </form>
+</div>
