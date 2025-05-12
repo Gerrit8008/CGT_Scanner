@@ -36,6 +36,32 @@ def run_migrations():
                 '''
             },
             {
+                'name': '007_add_client_customization_fields',
+                'sql': '''
+                -- Add missing columns to clients table
+                ALTER TABLE clients ADD COLUMN primary_color TEXT DEFAULT '#FF6900';
+                ALTER TABLE clients ADD COLUMN secondary_color TEXT DEFAULT '#808588';
+                ALTER TABLE clients ADD COLUMN scanner_name TEXT;
+                ALTER TABLE clients ADD COLUMN business_name TEXT;
+                ALTER TABLE clients ADD COLUMN business_domain TEXT;
+    
+                -- Create customizations table if it doesn't exist
+                CREATE TABLE IF NOT EXISTS customizations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id INTEGER NOT NULL,
+                    primary_color TEXT DEFAULT '#FF6900',
+                    secondary_color TEXT DEFAULT '#808588',
+                    logo_path TEXT,
+                    email_subject TEXT DEFAULT 'Your Security Scan Report',
+                    email_intro TEXT DEFAULT 'Thank you for using our security scanner.',
+                    default_scans TEXT DEFAULT '["network", "web", "email", "ssl"]',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+                );
+                '''
+            }
+            {
                 'name': '002_add_audit_log',
                 'sql': '''
                 CREATE TABLE IF NOT EXISTS audit_log (
