@@ -367,16 +367,27 @@ def save_scanner():
     """Save the scanner configuration"""
     data = request.get_json()
     
+    # Add validation for required fields
+    required_fields = ['companyName', 'email', 'phone']
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({
+                'status': 'error',
+                'message': f'Missing required field: {field}'
+            }), 400
+    
     try:
         scanner_id = create_scanner(data)
         return jsonify({
+            'success': True,  # Add this for frontend compatibility
             'status': 'success',
-            'scanner_id': scanner_id,
+            'scannerId': scanner_id,  # Add this for frontend compatibility
             'message': 'Scanner saved successfully',
             'preview_url': url_for('scanner_preview.preview_scanner', scanner_id=scanner_id)
         })
     except Exception as e:
         return jsonify({
+            'success': False,  # Add this for frontend compatibility
             'status': 'error',
             'message': str(e)
         }), 500
