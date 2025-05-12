@@ -419,6 +419,40 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
 
+@app.route('/run_migrations')
+def run_migrations_route():
+    """Run database migrations on demand"""
+    try:
+        from migrations import run_migrations
+        result = run_migrations()
+        
+        # Check schema after migrations
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check clients table schema
+        cursor.execute("PRAGMA table_info(clients)")
+        client_columns = [col[1] for col in cursor.fetchall()]
+        
+        # Check customizations table schema
+        cursor.execute("PRAGMA table_info(customizations)")
+        custom_columns = [col[1] for col in cursor.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            'migration_success': result,
+            'clients_table_columns': client_columns,
+            'customizations_table_columns': custom_columns,
+            'message': 'Migrations completed successfully' if result else 'Some migrations may have failed'
+        })
+    except Exception as e:
+        return jsonify({
+            'migration_success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
 #@app.route('/your-route')
 #def your_route():
 #    """Route description"""
