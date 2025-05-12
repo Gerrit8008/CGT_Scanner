@@ -47,6 +47,7 @@ from scanner_preview import scanner_preview_bp
 from database_manager import DatabaseManager
 from database_utils import get_db_connection, get_client_db
 from flask_login import LoginManager, current_user, login_required  # Add login_required here
+from migrations import run_migrations
 
 # Import scan functionality
 from scan import (
@@ -381,7 +382,7 @@ def init_database():
 
 # Initialize the database first
 init_database()
-
+run_migrations()
 # Check if this is first run (database doesn't exist)
 if not os.path.exists(CLIENT_DB_PATH):
     try:
