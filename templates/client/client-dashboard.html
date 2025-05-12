@@ -663,24 +663,24 @@
                                     {% if scan_history %}
                                         {% for scan in scan_history[:5] %}
                                         <tr>
-                                            <td>{{ scan.timestamp }}</td>
-                                            <td>{{ scan.scanner_name }}</td>
-                                            <td>{{ scan.target }}</td>
+                                            <td>{{ scan.get('timestamp', '') }}</td>
+                                            <td>{{ scan.get('scanner_name', '') }}</td>
+                                            <td>{{ scan.get('target', '') }}</td>
                                             <td>
-                                                <span class="badge bg-{{ 'success' if scan.status == 'completed' else 'warning' if scan.status == 'running' else 'danger' }}">
-                                                    {{ scan.status|title }}
+                                                <span class="badge bg-{{ 'success' if scan.get('status', '') == 'completed' else 'warning' if scan.get('status', '') == 'running' else 'danger' }}">
+                                                    {{ scan.get('status', 'Unknown')|title }}
                                                 </span>
                                             </td>
                                             <td>
-                                                <span class="text-{{ 'success' if scan.security_score > 70 else 'warning' if scan.security_score > 40 else 'danger' }}">
-                                                    {{ scan.security_score|default('N/A') }}%
+                                                <span class="text-{{ 'success' if scan.get('security_score', 0) > 70 else 'warning' if scan.get('security_score', 0) > 40 else 'danger' }}">
+                                                    {{ scan.get('security_score', 'N/A') }}%
                                                 </span>
                                             </td>
                                             <td>
-                                                <span class="badge bg-light text-dark">{{ scan.issues_found|default('0') }} found</span>
+                                                <span class="badge bg-light text-dark">{{ scan.get('issues_found', 0) }} found</span>
                                             </td>
                                             <td>
-                                                <a href="/client/reports/{{ scan.scan_id }}" class="btn btn-sm btn-outline-primary">
+                                                <a href="/client/reports/{{ scan.get('scan_id', '') }}" class="btn btn-sm btn-outline-primary">
                                                     <i class="bi bi-file-earmark-text me-1"></i> View
                                                 </a>
                                             </td>
