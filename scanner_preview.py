@@ -111,9 +111,19 @@ def save_logo_from_base64(base64_data, scanner_id):
 @scanner_preview_bp.route('/preview/customize', methods=['GET', 'POST'])  
 @require_login
 def customize_preview_scanner():
-    """Render the scanner customization form"""
+    """Main scanner creation/customization page for preview"""
     if request.method == 'POST':
         try:
+            # Get the current user's ID from session
+            from flask import session
+            user_id = session.get('user_id')  # Make sure this matches your session key
+            
+            if not user_id:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'User not authenticated'
+                }), 401
+                
             # Check content type
             if not request.is_json:
                 return jsonify({
@@ -121,26 +131,38 @@ def customize_preview_scanner():
                     'message': 'Content-Type must be application/json'
                 }), 400
 
-            data = request.get_json()
-            if not data:
+            client_data = request.get_json()
+            if not client_data:
                 return jsonify({'status': 'error', 'message': 'No data provided'}), 400
                 
             # Validate required fields
-            if not data.get('scannerName') or not data.get('businessDomain'):
+            if not client_data.get('scannerName') or not client_data.get('businessDomain'):
                 return jsonify({'status': 'error', 'message': 'Scanner name and business domain are required'}), 400
             
-            result = create_scanner(data)
-            return jsonify(result)
+            # Call create_client with both required parameters
+            result = create_client(client_data, user_id)
             
+            # Handle the result
+            if result and result.get('status') == 'success':
+                return jsonify({
+                    'status': 'success',
+                    'preview_url': f"/preview/scanner/{result.get('client_id')}"
+                })
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': result.get('message', 'Failed to create scanner')
+                }), 400
+                
         except ValueError as ve:
-            logging.warning(f"Validation error: {str(ve)}")
             return jsonify({'status': 'error', 'message': str(ve)}), 400
         except Exception as e:
+            import logging
             logging.error(f"Error creating scanner: {str(e)}")
             return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
     
     # For GET requests, render the template
-    return render_template('admin/customization-form.html')
+    return render_template('client/customize_scanner.html')
 
 @scanner_preview_bp.route('/preview/<scanner_id>')
 @require_login
