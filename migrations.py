@@ -248,6 +248,32 @@ def fix_users_table():
             conn.close()
         return False
 
+def migrate():
+    conn = sqlite3.connect('client_scanner.db')
+    cursor = conn.cursor()
+    
+    try:
+        # Add primary_color column with default value
+        cursor.execute('''
+            ALTER TABLE clients 
+            ADD COLUMN primary_color TEXT DEFAULT '#FF6900'
+        ''')
+        
+        # Add secondary_color column with default value
+        cursor.execute('''
+            ALTER TABLE clients 
+            ADD COLUMN secondary_color TEXT DEFAULT '#808588'
+        ''')
+        
+        conn.commit()
+        print("Successfully added color columns to clients table")
+        
+    except Exception as e:
+        print(f"Migration error: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
 # Allow running just the fix for the users table
 if __name__ == "__main__":
     # You can run either the full migrations or just the fix for the users table
