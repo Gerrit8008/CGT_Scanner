@@ -628,18 +628,18 @@
                 // Show loading state
                 document.getElementById('scannerConfigForm').style.opacity = '0.6';
                 document.querySelector('.progress-indicator').style.display = 'block';
-                
+    
                 try {
-                    const response = await fetch('/preview/customize', {
+                    const response = await fetch('/preview/customize', {  // Updated route
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify(formData)
                     });
-                    
+        
                     const data = await response.json();
-                    
+        
                     if (data.status === 'success') {
                         if (previewOnly) {
                             // Redirect to preview
@@ -660,7 +660,6 @@
                     document.querySelector('.progress-indicator').style.display = 'none';
                 }
             }
-        }
         
         // Initialize the customization system
         document.addEventListener('DOMContentLoaded', () => {
