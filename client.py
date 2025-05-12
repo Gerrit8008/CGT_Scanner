@@ -104,68 +104,6 @@ def client_required(f):
     
     return decorated_function
 
-def update_client(client_id, data, user_id):
-    """Update client information
-    
-    Args:
-        client_id (int): ID of the client to update
-        data (dict): Dictionary of client data to update
-        user_id (int): ID of the user making the update
-        
-    Returns:
-        dict: Status and message
-    """
-    conn = None
-    try:
-        # Log the update operation
-        logger.info(f"Updating client {client_id} with data: {data} by user {user_id}")
-        
-        # Connect to database
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Start with an empty update_fields dictionary and params list
-        update_fields = []
-        params = []
-        
-        # Add fields to update based on the data provided
-        for field_name, field_value in data.items():
-            update_fields.append(f"{field_name} = ?")
-            params.append(field_value)
-        
-        # Add timestamp and user_id to update
-        update_fields.append("updated_at = ?")
-        params.append(datetime.now().isoformat())
-        
-        update_fields.append("updated_by = ?")
-        params.append(user_id)
-        
-        # Add client_id to params
-        params.append(client_id)
-        
-        # If no fields to update, return success
-        if not update_fields:
-            return {"status": "success", "message": "No changes detected"}
-        
-        # Build and execute update query
-        update_query = f"UPDATE clients SET {', '.join(update_fields)} WHERE id = ?"
-        cursor.execute(update_query, params)
-        
-        # Log the SQL query for debugging
-        logger.debug(f"Executing SQL: {update_query} with params {params}")
-        
-        conn.commit()
-        
-        return {"status": "success", "message": "Client updated successfully"}
-    except Exception as e:
-        logger.error(f"Error updating client: {e}")
-        if conn:
-            conn.rollback()
-        return {"status": "error", "message": str(e)}
-    finally:
-        if conn:
-            conn.close()
-
 @client_bp.route('/dashboard')
 @client_required
 def dashboard(user):
@@ -676,6 +614,9 @@ def settings(user):
                     'notification_frequency': request.form.get('notification_frequency', 'weekly')
                 }
                 
+                # Log the notification data being submitted
+                logger.info(f"Updating notification preferences with data: {notification_data}")
+                
                 # Update the client notification preferences
                 result = update_client(client['id'], notification_data, user['user_id'])
                 
@@ -736,6 +677,9 @@ def settings(user):
                         logger.error(f"Error updating password: {e}")
                         flash('An error occurred while updating your password', 'danger')
             
+            # Handle other actions...
+            # 2FA, API keys, etc.
+            
             # After processing form, redirect to same page to prevent form resubmission
             return redirect(url_for('client.settings'))
         
@@ -750,6 +694,105 @@ def settings(user):
         logger.error(f"Error in settings: {str(e)}")
         flash('An error occurred while loading settings', 'danger')
         return redirect(url_for('client.dashboard'))
+
+def update_client(client_id, data, user_id):
+    """Update client information"""
+    try:
+        # Log the update operation
+        logger.info(f"Updating client {client_id} with data: {data}")
+        
+        # Connect to database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Start with an empty update_fields dictionary and params list
+        update_fields = []
+        params = []
+        
+        # Add non-empty fields to update
+        if 'business_name' in data and data['business_name']:
+            update_fields.append("business_name = ?")
+            params.append(data['business_name'])
+            
+        if 'business_domain' in data and data['business_domain']:
+            update_fields.append("business_domain = ?")
+            params.append(data['business_domain'])
+            
+        if 'contact_email' in data and data['contact_email']:
+            update_fields.append("contact_email = ?")
+            params.append(data['contact_email'])
+            
+        if 'contact_phone' in data:  # Allow empty phone
+            update_fields.append("contact_phone = ?")
+            params.append(data['contact_phone'])
+            
+        # Handle subscription changes if present
+        if 'subscription_level' in data:
+            update_fields.append("subscription_level = ?")
+            params.append(data['subscription_level'])
+            
+        # Handle notification preferences
+        if 'notification_email' in data:
+            # Convert boolean to integer
+            notification_email = 1 if data['notification_email'] else 0
+            update_fields.append("notification_email = ?")
+            params.append(notification_email)
+            
+        if 'notification_email_address' in data:
+            update_fields.append("notification_email_address = ?")
+            params.append(data['notification_email_address'])
+            
+        if 'notify_scan_complete' in data:
+            notify_scan_complete = 1 if data['notify_scan_complete'] else 0
+            update_fields.append("notify_scan_complete = ?")
+            params.append(notify_scan_complete)
+            
+        if 'notify_critical_issues' in data:
+            notify_critical_issues = 1 if data['notify_critical_issues'] else 0
+            update_fields.append("notify_critical_issues = ?")
+            params.append(notify_critical_issues)
+            
+        if 'notify_weekly_reports' in data:
+            notify_weekly_reports = 1 if data['notify_weekly_reports'] else 0
+            update_fields.append("notify_weekly_reports = ?")
+            params.append(notify_weekly_reports)
+            
+        if 'notification_frequency' in data:
+            update_fields.append("notification_frequency = ?")
+            params.append(data['notification_frequency'])
+        
+        # Add timestamp and user_id to update
+        update_fields.append("updated_at = ?")
+        params.append(datetime.now().isoformat())
+        
+        update_fields.append("updated_by = ?")
+        params.append(user_id)
+        
+        # Add client_id to params
+        params.append(client_id)
+        
+        # If no fields to update, return success
+        if not update_fields:
+            return {"status": "success", "message": "No changes detected"}
+        
+        # Build and execute update query
+        update_query = f"UPDATE clients SET {', '.join(update_fields)} WHERE id = ?"
+        cursor.execute(update_query, params)
+        
+        # Log the SQL query for debugging
+        logger.debug(f"Executing SQL: {update_query} with params {params}")
+        
+        conn.commit()
+        conn.close()
+        
+        return {"status": "success", "message": "Client updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating client: {e}")
+        if conn:
+            conn.rollback()
+            conn.close()
+        return {"status": "error", "message": str(e)}
+
 @client_bp.route('/profile')
 @client_required
 def profile(user):
