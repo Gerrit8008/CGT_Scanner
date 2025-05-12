@@ -685,9 +685,15 @@
                 }
             }
         
-        // Initialize the customization system
+     
         document.addEventListener('DOMContentLoaded', () => {
-            new ScannerCustomization();
+            // Initialize the customization system
+            const scanner = new ScannerCustomization();
+    
+            // Add form submission handler
+            document.getElementById('scannerConfigForm').addEventListener('submit', function(event) {
+                submitScannerForm(event);
+            });
         });
     </script>
 </body>
