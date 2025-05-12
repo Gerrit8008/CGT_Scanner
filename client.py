@@ -104,6 +104,68 @@ def client_required(f):
     
     return decorated_function
 
+def update_client(client_id, data, user_id):
+    """Update client information
+    
+    Args:
+        client_id (int): ID of the client to update
+        data (dict): Dictionary of client data to update
+        user_id (int): ID of the user making the update
+        
+    Returns:
+        dict: Status and message
+    """
+    conn = None
+    try:
+        # Log the update operation
+        logger.info(f"Updating client {client_id} with data: {data} by user {user_id}")
+        
+        # Connect to database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Start with an empty update_fields dictionary and params list
+        update_fields = []
+        params = []
+        
+        # Add fields to update based on the data provided
+        for field_name, field_value in data.items():
+            update_fields.append(f"{field_name} = ?")
+            params.append(field_value)
+        
+        # Add timestamp and user_id to update
+        update_fields.append("updated_at = ?")
+        params.append(datetime.now().isoformat())
+        
+        update_fields.append("updated_by = ?")
+        params.append(user_id)
+        
+        # Add client_id to params
+        params.append(client_id)
+        
+        # If no fields to update, return success
+        if not update_fields:
+            return {"status": "success", "message": "No changes detected"}
+        
+        # Build and execute update query
+        update_query = f"UPDATE clients SET {', '.join(update_fields)} WHERE id = ?"
+        cursor.execute(update_query, params)
+        
+        # Log the SQL query for debugging
+        logger.debug(f"Executing SQL: {update_query} with params {params}")
+        
+        conn.commit()
+        
+        return {"status": "success", "message": "Client updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating client: {e}")
+        if conn:
+            conn.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        if conn:
+            conn.close()
+
 @client_bp.route('/dashboard')
 @client_required
 def dashboard(user):
@@ -570,12 +632,16 @@ def settings(user):
         client = get_client_by_user_id(user['user_id'])
         
         if not client:
-            flash('Please complete your client profile', 'info')
-            return redirect(url_for('auth.complete_profile'))
+            # Redirect to dashboard for auto-creation
+            return redirect(url_for('client.dashboard'))
+        
+        # Create a default two_factor_secret for the template
+        two_factor_secret = "ABCDEFGHIJKLMNOP"  # This would normally be generated
         
         if request.method == 'POST':
             action = request.form.get('action')
             
+            # Handle profile update
             if action == 'update_profile':
                 # Process profile update
                 settings_data = {
@@ -585,13 +651,21 @@ def settings(user):
                     'contact_phone': request.form.get('contact_phone')
                 }
                 
+                # Log the data being submitted for debugging
+                logger.info(f"Updating client profile with data: {settings_data}")
+                
+                # Update the client information in the database
+                # FIXED: Pass user_id from the user dictionary
                 result = update_client(client['id'], settings_data, user['user_id'])
                 
                 if result['status'] == 'success':
                     flash('Profile updated successfully', 'success')
+                    # Refresh client data after update
+                    client = get_client_by_user_id(user['user_id'])
                 else:
                     flash(f'Failed to update profile: {result.get("message", "Unknown error")}', 'danger')
             
+            # Handle notification preferences
             elif action == 'update_notifications':
                 # Process notification settings
                 notification_data = {
@@ -603,21 +677,32 @@ def settings(user):
                     'notification_frequency': request.form.get('notification_frequency', 'weekly')
                 }
                 
+                # FIXED: Pass user_id from the user dictionary
                 result = update_client(client['id'], notification_data, user['user_id'])
                 
                 if result['status'] == 'success':
                     flash('Notification preferences updated', 'success')
+                    # Refresh client data after update
+                    client = get_client_by_user_id(user['user_id'])
                 else:
                     flash(f'Failed to update preferences: {result.get("message", "Unknown error")}', 'danger')
             
-            # Handle other actions...
+            # Handle password change
+            elif action == 'change_password':
+                # Password change code...
+                # ...
             
+            # Other action handlers...
+            
+            # After processing form, redirect to same page to prevent form resubmission
             return redirect(url_for('client.settings'))
         
+        # For GET requests, render the settings template with client data
         return render_template(
             'client/settings.html',
             user=user,
-            client=client
+            client=client,
+            two_factor_secret=two_factor_secret
         )
     except Exception as e:
         logger.error(f"Error in settings: {str(e)}")
