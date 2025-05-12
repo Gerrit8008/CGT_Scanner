@@ -108,22 +108,25 @@ def save_logo_from_base64(base64_data, scanner_id):
         print(f"Error saving logo: {e}")
         return None
 
-@scanner_preview_bp.route('/preview/customize', methods=['GET', 'POST'])  
+@scanner_preview_bp.route('/preview/customize', methods=['GET', 'POST'])
 @require_login
 def customize_preview_scanner():
     """Main scanner creation/customization page for preview"""
+    # Get the current user's ID from session at the start
+    from flask import session, request, jsonify, render_template
+    import logging
+    from client_db import create_client, get_client_by_user_id
+
+    user_id = session.get('user_id')
+    
+    if not user_id:
+        return jsonify({
+            'status': 'error',
+            'message': 'User not authenticated'
+        }), 401
+
     if request.method == 'POST':
         try:
-            # Get the current user's ID from session
-            from flask import session
-            user_id = session.get('user_id')  # Make sure this matches your session key
-            
-            if not user_id:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'User not authenticated'
-                }), 401
-                
             # Check content type
             if not request.is_json:
                 return jsonify({
@@ -137,10 +140,28 @@ def customize_preview_scanner():
                 
             # Validate required fields
             if not client_data.get('scannerName') or not client_data.get('businessDomain'):
-                return jsonify({'status': 'error', 'message': 'Scanner name and business domain are required'}), 400
+                return jsonify({
+                    'status': 'error', 
+                    'message': 'Scanner name and business domain are required'
+                }), 400
+            
+            # Format the client data properly
+            formatted_client_data = {
+                'business_name': client_data.get('scannerName'),
+                'business_domain': client_data.get('businessDomain'),
+                'contact_email': client_data.get('contactEmail'),
+                'contact_phone': client_data.get('contactPhone', ''),
+                'scanner_name': client_data.get('scannerName'),
+                'primary_color': client_data.get('primaryColor', '#FF6900'),
+                'secondary_color': client_data.get('secondaryColor', '#808588'),
+                'email_subject': client_data.get('emailSubject', 'Your Security Scan Report'),
+                'email_intro': client_data.get('emailIntro', ''),
+                'subscription': client_data.get('subscription', 'basic'),
+                'default_scans': client_data.get('defaultScans', [])
+            }
             
             # Call create_client with both required parameters
-            result = create_client(client_data, user_id)
+            result = create_client(formatted_client_data, user_id)
             
             # Handle the result
             if result and result.get('status') == 'success':
@@ -155,14 +176,20 @@ def customize_preview_scanner():
                 }), 400
                 
         except ValueError as ve:
+            logging.error(f"Value error in customize_preview_scanner: {str(ve)}")
             return jsonify({'status': 'error', 'message': str(ve)}), 400
         except Exception as e:
-            import logging
             logging.error(f"Error creating scanner: {str(e)}")
             return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
     
-    # For GET requests, render the template
-    return render_template('client/customize_scanner.html')
+    # For GET requests, get the client data and render the template
+    try:
+        client = get_client_by_user_id(user_id)
+        return render_template('client/customize_scanner.html', client=client)
+    except Exception as e:
+        logging.error(f"Error fetching client data: {str(e)}")
+        # Even if there's an error, render the template with client=None
+        return render_template('client/customize_scanner.html', client=None)
 
 @scanner_preview_bp.route('/preview/<scanner_id>')
 @require_login
