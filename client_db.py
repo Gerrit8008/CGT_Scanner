@@ -207,20 +207,56 @@ def with_transaction(func):
             conn.close()
     return wrapper
 
-def get_client_by_user_id(conn, user_id):
-    """Wrapper function for get_client_by_user_id"""
+def get_client_by_user_id(user_id):
+    """Get client data for a specific user"""
     try:
-        # Create a new connection for this operation
         conn = sqlite3.connect(CLIENT_DB_PATH)
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        result = get_client_by_user_id(conn, cursor, user_id)
-        conn.close()
-        return result
-    except:
-        # If this fails, try the old function signature
-        return _get_client_by_user_id_legacy(user_id)
+        cursor.execute('''
+            SELECT 
+                id,
+                business_name,
+                business_domain,
+                contact_email,
+                contact_phone,
+                scanner_name,
+                subscription_level,
+                primary_color,
+                secondary_color,
+                email_subject,
+                email_intro
+            FROM clients 
+            WHERE user_id = ? AND active = 1
+            ORDER BY created_at DESC 
+            LIMIT 1
+        ''', (user_id,))
+        
+        result = cursor.fetchone()
+        
+        if result:
+            return {
+                'id': result[0],
+                'business_name': result[1],
+                'business_domain': result[2],
+                'contact_email': result[3],
+                'contact_phone': result[4],
+                'scanner_name': result[5],
+                'subscription_level': result[6],
+                'primary_color': result[7] if len(result) > 7 else '#FF6900',
+                'secondary_color': result[8] if len(result) > 8 else '#808588',
+                'email_subject': result[9] if len(result) > 9 else 'Your Security Scan Report',
+                'email_intro': result[10] if len(result) > 10 else ''
+            }
+        return None
+        
+    except Exception as e:
+        import logging
+        logging.error(f"Error getting client by user_id: {str(e)}")
+        return None
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 def track_activity(client_id, activity_type, details):
     """Track client activities"""
@@ -1450,63 +1486,6 @@ def create_user(conn, username, email, password, role='client', full_name=''):
     
     return {'status': 'success', 'user_id': user_id}
 
-def get_client_by_user_id(user_id):
-    """
-    Get client details by user ID with enhanced error handling
-    
-    Args:
-        user_id (int): User ID
-        
-    Returns:
-        dict or None: Client details or None if not found
-    """
-    try:
-        if not user_id:
-            logger.warning("get_client_by_user_id called with empty user_id")
-            return None
-            
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # Enhanced query with JOIN to get customization data 
-        cursor.execute('''
-            SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
-                   cu.default_scans, ds.subdomain, ds.deploy_status
-            FROM clients c
-            LEFT JOIN customizations cu ON c.id = cu.client_id
-            LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
-            WHERE c.user_id = ? AND c.active = 1
-        ''', (user_id,))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
-            logger.debug(f"No client found for user_id: {user_id}")
-            return None
-            
-        # Convert row to dict
-        client_data = dict(row)
-        
-        # Convert default_scans JSON to list if present
-        if client_data.get('default_scans'):
-            try:
-                client_data['default_scans'] = json.loads(client_data['default_scans'])
-            except json.JSONDecodeError:
-                client_data['default_scans'] = []
-        else:
-            client_data['default_scans'] = []
-            
-        logger.debug(f"Successfully retrieved client for user_id: {user_id}")
-        return client_data
-        
-    except Exception as e:
-        logger.error(f"Error retrieving client by user ID: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return None
-
 @with_transaction
 def update_user(conn, user_id, user_data):
     """Update user details"""
@@ -2344,60 +2323,55 @@ def get_login_stats(conn):
     }
     
 def get_client_by_user_id(user_id):
-    """
-    Get client details by user ID with enhanced error handling
-    
-    Args:
-        user_id (int): User ID
-        
-    Returns:
-        dict or None: Client details or None if not found
-    """
+    """Get client data for a specific user"""
     try:
-        if not user_id:
-            logger.warning("get_client_by_user_id called with empty user_id")
-            return None
-            
         conn = sqlite3.connect(CLIENT_DB_PATH)
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # Enhanced query with JOIN to get customization data 
         cursor.execute('''
-            SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
-                   cu.default_scans, ds.subdomain, ds.deploy_status
-            FROM clients c
-            LEFT JOIN customizations cu ON c.id = cu.client_id
-            LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
-            WHERE c.user_id = ? AND c.active = 1
+            SELECT 
+                id,
+                business_name,
+                business_domain,
+                contact_email,
+                contact_phone,
+                scanner_name,
+                subscription_level,
+                primary_color,
+                secondary_color,
+                email_subject,
+                email_intro
+            FROM clients 
+            WHERE user_id = ? AND active = 1
+            ORDER BY created_at DESC 
+            LIMIT 1
         ''', (user_id,))
         
-        row = cursor.fetchone()
-        conn.close()
+        result = cursor.fetchone()
         
-        if not row:
-            logger.debug(f"No client found for user_id: {user_id}")
-            return None
-            
-        # Convert row to dict
-        client_data = dict(row)
-        
-        # Convert default_scans JSON to list if present
-        if client_data.get('default_scans'):
-            try:
-                client_data['default_scans'] = json.loads(client_data['default_scans'])
-            except json.JSONDecodeError:
-                client_data['default_scans'] = []
-        else:
-            client_data['default_scans'] = []
-            
-        logger.debug(f"Successfully retrieved client for user_id: {user_id}")
-        return client_data
+        if result:
+            return {
+                'id': result[0],
+                'business_name': result[1],
+                'business_domain': result[2],
+                'contact_email': result[3],
+                'contact_phone': result[4],
+                'scanner_name': result[5],
+                'subscription_level': result[6],
+                'primary_color': result[7] if len(result) > 7 else '#FF6900',
+                'secondary_color': result[8] if len(result) > 8 else '#808588',
+                'email_subject': result[9] if len(result) > 9 else 'Your Security Scan Report',
+                'email_intro': result[10] if len(result) > 10 else ''
+            }
+        return None
         
     except Exception as e:
-        logger.error(f"Error retrieving client by user ID: {e}")
+        import logging
+        logging.error(f"Error getting client by user_id: {str(e)}")
         return None
-
+    finally:
+        if 'conn' in locals():
+            conn.close()
 def get_db_connection():
     """Get a new database connection
     
