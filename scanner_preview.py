@@ -159,108 +159,6 @@ def save_logo_from_base64(base64_data, scanner_id):
             os.unlink(temp_filepath)
         return None
 
-def get_client_by_user_id(user_id: int) -> dict:
-    """Get client details by user_id"""
-    conn = get_db_connection()
-    try:
-        client = conn.execute(
-            """SELECT id, user_id, primary_color, secondary_color, 
-                      created_at, updated_at 
-               FROM clients 
-               WHERE user_id = ?""",
-            (user_id,)
-        ).fetchone()
-        
-        if not client:
-            logger.warning(f"No client found for user_id: {user_id}")
-            return None
-            
-        return dict(client)
-        
-    except sqlite3.OperationalError as e:
-        logger.error(f"Database error in get_client_by_user_id: {str(e)}")
-        # If column doesn't exist, run migration
-        if "no such column" in str(e):
-            from migrations.add_client_colors import migrate
-            migrate()
-            # Retry the query after migration
-            return get_client_by_user_id(user_id)
-        raise
-    except Exception as e:
-        logger.error(f"Error in get_client_by_user_id: {str(e)}")
-        raise
-    finally:
-        conn.close()
-        
-@scanner_preview_bp.route('/preview/customize', methods=['POST'])
-@require_login
-def customize_scanner():
-    """Main scanner creation/customization page"""
-    if request.method == 'POST':
-        # Get user_id from session
-        user_id = session.get('user_id')
-        if not user_id:
-            return jsonify({
-                'status': 'error',
-                'message': 'User not authenticated'
-            }), 401
-        
-        data = request.get_json()
-        if data:
-            try:
-                # Pass user_id to create_client
-                client = create_client(user_id)  # Add this line
-                
-                # Create new scanner
-                scanner_id = create_scanner(data)
-                return jsonify({
-                    'status': 'success',
-                    'scanner_id': scanner_id,
-                    'preview_url': url_for('scanner_preview.preview_scanner', scanner_id=scanner_id),
-                    'deploy_url': url_for('scanner_preview.deploy_scanner', scanner_id=scanner_id)
-                })
-            except Exception as e:
-                logger.error(f"Error in customize_scanner: {str(e)}")
-                return jsonify({
-                    'status': 'error',
-                    'message': str(e)
-                }), 500
-
-def create_client(user_id: int) -> dict:
-    """Create a new client record"""
-    if not user_id:
-        raise ValueError("user_id is required")
-        
-    conn = get_db_connection()
-    try:
-        # Check if client already exists
-        existing = conn.execute(
-            "SELECT id FROM clients WHERE user_id = ?",
-            (user_id,)
-        ).fetchone()
-        
-        if existing:
-            return {'client_id': existing['id']}
-            
-        # Create new client
-        cursor = conn.execute(
-            """INSERT INTO clients (
-                user_id, primary_color, secondary_color, 
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?)""",
-            (user_id, '#FF6900', '#808588', 
-             datetime.now().isoformat(), datetime.now().isoformat())
-        )
-        
-        conn.commit()
-        return {'client_id': cursor.lastrowid}
-        
-    except Exception as e:
-        logger.error(f"Error in create_client: {str(e)}")
-        raise
-    finally:
-        conn.close()
-
 @scanner_preview_bp.route('/preview/customize', methods=['GET', 'POST'])
 @require_login
 def customize_preview_scanner():
@@ -622,72 +520,40 @@ def deploy_scanner(scanner_id):
 
 def create_scanner(data):
     """Create a new scanner configuration"""
-    conn = get_db_connection()
+    # Use context manager instead of direct connection
     try:
-        # Get user_id and check/create client
-        user_id = session.get('user_id')
-        if not user_id:
-            raise ValueError("User not authenticated")
-
-        # Get or create client
-        client = conn.execute(
-            "SELECT id FROM clients WHERE user_id = ?",
-            (user_id,)
-        ).fetchone()
-
-        if client:
-            client_id = client['id']
-        else:
-            # Create new client
-            cursor = conn.execute(
-                """INSERT INTO clients (
-                    user_id, primary_color, secondary_color, 
-                    scanner_name, business_name, business_domain,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (user_id, '#FF6900', '#808588', 
-                 data.get('scannerName'), data.get('businessName', ''),
-                 data.get('businessDomain', ''),
-                 datetime.now().isoformat(), datetime.now().isoformat())
-            )
-            client_id = cursor.lastrowid
-
-            # Create default customization
+        with get_db() as conn:
+            client_id = get_client_id_from_session()
+            if not client_id:
+                return {'status': 'error', 'message': 'Client ID not found'}
+            
+            # Generate scanner ID and subdomain
+            scanner_id = str(uuid.uuid4())
+            subdomain = generate_subdomain(data.get('scannerName', 'scanner'))
+            
+            # Validate data before inserting
+            if not data.get('scannerName'):
+                return {'status': 'error', 'message': 'Scanner name is required'}
+                
+            # Insert scanner record with initial deployed status
             conn.execute(
-                """INSERT INTO customizations (
-                    client_id, created_at, updated_at
-                ) VALUES (?, ?, ?)""",
-                (client_id, datetime.now().isoformat(), datetime.now().isoformat())
+                """INSERT INTO deployed_scanners 
+                   (id, client_id, subdomain, domain, deploy_status, deploy_date, 
+                    config_path, template_version) 
+                   VALUES (?, ?, ?, ?, 'deployed', ?, ?, '1.0')""",
+                (scanner_id, client_id, subdomain, data.get('businessDomain', ''), 
+                 datetime.now().isoformat(), f"/config/{scanner_id}.json")
             )
-
-        # Generate scanner ID and subdomain
-        scanner_id = str(uuid.uuid4())
-        subdomain = generate_subdomain(data.get('scannerName', 'scanner'))
-        
-        # Insert scanner record
-        conn.execute(
-            """INSERT INTO deployed_scanners (
-                id, client_id, subdomain, domain, 
-                deploy_status, deploy_date, config_path, 
-                template_version
-            ) VALUES (?, ?, ?, ?, 'deployed', ?, ?, '1.0')""",
-            (scanner_id, client_id, subdomain, 
-             data.get('businessDomain', ''), 
-             datetime.now().isoformat(), 
-             f"/config/{scanner_id}.json")
-        )
-        
-        # Save configuration
-        save_scanner_config(scanner_id, data)
-        conn.commit()
-        
-        return scanner_id
-        
+            
+            # Save configuration and commit
+            save_scanner_config(scanner_id, data)
+            conn.commit()
+            return {'status': 'success', 'scanner_id': scanner_id}
+            
+    except sqlite3.Error as e:
+        return {'status': 'error', 'message': f'Database error: {str(e)}'}
     except Exception as e:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+        return {'status': 'error', 'message': str(e)}
             
 @scanner_preview_bp.route('/api/scanner/download-report', methods=['POST'])
 @require_login
