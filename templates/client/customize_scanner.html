@@ -135,7 +135,7 @@
                     <a href="/client/reports" class="sidebar-link">
                         <i class="bi bi-file-earmark-text"></i> Scan Reports
                     </a>
-                    <a href="/customize" class="sidebar-link active">
+                    <a href="/preview/customize" class="sidebar-link active">
                         <i class="bi bi-plus-circle"></i> Create Scanner
                     </a>
                     <a href="/client/settings" class="sidebar-link">
@@ -604,7 +604,7 @@
                         }
                     });
         
-                    const response = await fetch('/customize', {
+                    const response = await fetch('/preview/customize', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -630,7 +630,7 @@
                 document.querySelector('.progress-indicator').style.display = 'block';
                 
                 try {
-                    const response = await fetch('/customize', {
+                    const response = await fetch('/preview/customize', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
