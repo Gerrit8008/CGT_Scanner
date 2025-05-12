@@ -302,11 +302,12 @@ def migrate():
 
 # Allow running just the fix for the users table
 if __name__ == "__main__":
-    # You can run either the full migrations or just the fix for the users table
-    # Uncomment the one you want to run
-    
     # Run all migrations
-    # run_migrations()
-    
+    if run_migrations():
+        print("All migrations completed successfully")
+    else:
+        print("Migration failed")
+        s 
     # Run only the fix for users table
     fix_users_table()
+    
