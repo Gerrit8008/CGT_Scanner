@@ -404,20 +404,21 @@
             constructor() {
                 this.initializeEventListeners();
                 this.updateLivePreview();
+                this.updateScanOptions();
             }
-    
+            
             initializeEventListeners() {
                 // Color pickers
                 document.getElementById('primaryColor').addEventListener('input', (e) => {
                     document.getElementById('primaryColorHex').value = e.target.value;
                     this.updateLivePreview();
                 });
-        
+                
                 document.getElementById('primaryColorHex').addEventListener('input', (e) => {
                     document.getElementById('primaryColor').value = e.target.value;
                     this.updateLivePreview();
                 });
-        
+                
                 document.getElementById('secondaryColor').addEventListener('input', (e) => {
                     document.getElementById('secondaryColorHex').value = e.target.value;
                     this.updateLivePreview();
@@ -427,67 +428,66 @@
                     document.getElementById('secondaryColor').value = e.target.value;
                     this.updateLivePreview();
                 });
-        
+                
                 // Logo upload
                 document.getElementById('logoUpload').addEventListener('change', (e) => {
                     this.handleLogoUpload(e);
                 });
-        
+                
                 // Text inputs
                 document.getElementById('scannerName').addEventListener('input', () => {
                     this.updateLivePreview();
                 });
-        
+                
                 document.getElementById('businessDomain').addEventListener('input', () => {
                     this.updateLivePreview();
                 });
-        
+                
                 // Scan options
                 document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
                     checkbox.addEventListener('change', () => {
                         this.updateScanOptions();
                     });
                 });
-        
+                
                 // Action buttons
                 document.getElementById('saveAndPreviewBtn').addEventListener('click', () => {
-                    submitScannerForm(new Event('submit'));
+                    this.saveScanner(true);
                 });
-        
+                
                 document.getElementById('saveAndDeployBtn').addEventListener('click', () => {
-                    const formEvent = new Event('submit');
-                    submitScannerForm(formEvent);
+                    this.saveScanner(false);
                 });
             }
-    
+            
             updateLivePreview() {
                 const primaryColor = document.getElementById('primaryColor').value;
                 const secondaryColor = document.getElementById('secondaryColor').value;
                 const scannerName = document.getElementById('scannerName').value;
                 const businessDomain = document.getElementById('businessDomain').value;
-        
+                
                 // Update CSS variables
                 document.documentElement.style.setProperty('--primary-color', primaryColor);
                 document.documentElement.style.setProperty('--secondary-color', secondaryColor);
-            
+                
                 // Update preview colors
                 document.querySelector('.scanner-preview').style.backgroundColor = secondaryColor;
                 document.querySelector('.preview-button').style.backgroundColor = primaryColor;
-        
+                
                 // Update scanner name
                 if (!document.getElementById('logoUpload').files[0]) {
-                    document.getElementById('previewLogo').innerHTML = `<h4 class="mb-0">${scannerName}</h4>`;
+                    document.getElementById('previewLogo').innerHTML = `<h4 class="mb-0">${scannerName || 'Security Scanner'}</h4>`;
                 }
                 
                 // Update business domain placeholder
-                document.querySelector('.preview-content input').placeholder = `https://${businessDomain}`;
-        
+                document.querySelector('.preview-content input').placeholder = `https://${businessDomain || 'example.com'}`;
+                
                 // Update icon colors
                 document.querySelectorAll('.scan-option-preview i').forEach(icon => {
                     icon.style.color = primaryColor;
                 });
             }
-    
+            
             handleLogoUpload(e) {
                 const file = e.target.files[0];
                 if (file) {
@@ -496,7 +496,7 @@
                         const imgPreview = document.getElementById('logoPreview');
                         imgPreview.src = event.target.result;
                         document.getElementById('logoPreviewContainer').style.display = 'block';
-                
+                        
                         // Update preview with logo
                         document.getElementById('previewLogo').innerHTML = `
                             <img src="${event.target.result}" alt="Logo" class="preview-logo">
@@ -505,7 +505,7 @@
                     reader.readAsDataURL(file);
                 }
             }
-    
+            
             updateScanOptions() {
                 const scanOptionsPreview = document.getElementById('scanOptionsPreview');
                 const selectedOptions = [];
@@ -514,18 +514,21 @@
                 if (document.getElementById('webScan').checked) selectedOptions.push({icon: 'globe', label: 'Web App'});
                 if (document.getElementById('emailScan').checked) selectedOptions.push({icon: 'envelope', label: 'Email'});
                 if (document.getElementById('sslScan').checked) selectedOptions.push({icon: 'lock', label: 'SSL/TLS'});
-        
+                
                 if (selectedOptions.length === 0) {
                     scanOptionsPreview.style.display = 'none';
                     return;
                 }
-        
+                
                 scanOptionsPreview.style.display = 'flex';
                 scanOptionsPreview.innerHTML = '';
-        
+                
+                // Determine column width based on number of options
+                const colWidth = Math.floor(12 / selectedOptions.length);
+                
                 selectedOptions.forEach(option => {
                     const col = document.createElement('div');
-                    col.className = `col-${12/selectedOptions.length} scan-option-preview`;
+                    col.className = `col-${colWidth} scan-option-preview`;
                     col.innerHTML = `
                         <i class="bi bi-${option.icon}" style="color: ${document.getElementById('primaryColor').value}"></i>
                         <h6 class="small">${option.label}</h6>
@@ -533,19 +536,30 @@
                     scanOptionsPreview.appendChild(col);
                 });
             }
-        }
             
             async saveScanner(previewOnly = false) {
+                // Validate required fields
+                const scannerName = document.getElementById('scannerName').value;
+                const businessDomain = document.getElementById('businessDomain').value;
+                const contactEmail = document.getElementById('contactEmail').value;
+                
+                if (!scannerName || !businessDomain || !contactEmail) {
+                    alert('Scanner name, business domain, and contact email are required');
+                    return;
+                }
+                
                 // Collect form data
                 const formData = {
-                    scannerName: document.getElementById('scannerName').value,
-                    businessDomain: document.getElementById('businessDomain').value,
-                    contactEmail: document.getElementById('contactEmail').value,
+                    scannerName: scannerName,
+                    businessDomain: businessDomain,
+                    contactEmail: contactEmail,
+                    contactPhone: document.getElementById('contactPhone')?.value || '',
                     primaryColor: document.getElementById('primaryColor').value,
                     secondaryColor: document.getElementById('secondaryColor').value,
                     emailSubject: document.getElementById('emailSubject').value,
                     emailIntro: document.getElementById('emailIntro').value,
-                    defaultScans: []
+                    defaultScans: [],
+                    isDeploy: !previewOnly
                 };
                 
                 // Collect selected scan options
@@ -554,64 +568,12 @@
                 if (document.getElementById('emailScan').checked) formData.defaultScans.push('email');
                 if (document.getElementById('sslScan').checked) formData.defaultScans.push('ssl');
                 
-                // Handle logo upload
-                const logoInput = document.getElementById('logoUpload');
-                if (logoInput.files && logoInput.files[0]) {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    const img = new Image();
-                    
-                    img.onload = async () => {
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        ctx.drawImage(img, 0, 0);
-                        formData.logo = canvas.toDataURL();
-                        await this.submitScanner(formData, previewOnly);
-                    };
-                    
-                    img.src = document.getElementById('logoPreview').src;
-                } else {
-                    await this.submitScanner(formData, previewOnly);
-                }
-            }
-            
-            async function submitScannerForm(event) {
-                event.preventDefault();
-    
                 // Show loading state
                 document.getElementById('scannerConfigForm').style.opacity = '0.6';
                 document.querySelector('.progress-indicator').style.display = 'block';
-    
+                
                 try {
-                    // Validate required fields
-                    const scannerName = document.getElementById('scannerName').value;
-                    const businessDomain = document.getElementById('businessDomain').value;
-                    const contactEmail = document.getElementById('contactEmail').value;
-        
-                    if (!scannerName || !businessDomain || !contactEmail) {
-                        alert('Scanner name, business domain, and contact email are required');
-                        return;
-                    }
-        
-                    // Collect form data
-                    const formData = {
-                        scannerName: scannerName,
-                        businessDomain: businessDomain,
-                        contactEmail: contactEmail,
-                        primaryColor: document.getElementById('primaryColor').value,
-                        secondaryColor: document.getElementById('secondaryColor').value,
-                        emailSubject: document.getElementById('emailSubject').value,
-                        emailIntro: document.getElementById('emailIntro').value,
-                        defaultScans: []
-                    };
-        
-                    // Collect selected scan options
-                    if (document.getElementById('networkScan').checked) formData.defaultScans.push('network');
-                    if (document.getElementById('webScan').checked) formData.defaultScans.push('web');
-                    if (document.getElementById('emailScan').checked) formData.defaultScans.push('email');
-                    if (document.getElementById('sslScan').checked) formData.defaultScans.push('ssl');
-        
-                    // Handle logo if present
+                    // Handle logo upload if present
                     const logoInput = document.getElementById('logoUpload');
                     if (logoInput.files && logoInput.files[0]) {
                         const logoPreview = document.getElementById('logoPreview');
@@ -619,9 +581,9 @@
                             formData.logo = logoPreview.src;
                         }
                     }
-        
-                    console.log('Submitting data:', formData);
-        
+                    
+                    console.log('Submitting data to /preview/customize:', formData);
+                    
                     // Send the data to the server
                     const response = await fetch('/preview/customize', {
                         method: 'POST',
@@ -630,50 +592,27 @@
                         },
                         body: JSON.stringify(formData)
                     });
-        
-                    const result = await response.json();
-            
-                    if (result.status === 'success') {
-                        window.location.href = result.preview_url;
-                    } else {
-                        throw new Error(result.message || 'Failed to create scanner');
+                    
+                    if (!response.ok) {
+                        throw new Error(`Server responded with status: ${response.status}`);
                     }
-                } catch (error) {
-                    console.error('Error creating scanner:', error);
-                    alert('Error creating scanner: ' + error.message);
-                } finally {
-                    // Hide loading state
-                    document.getElementById('scannerConfigForm').style.opacity = '1';
-                    document.querySelector('.progress-indicator').style.display = 'none';
-                }
-            }
-            
-            async submitScanner(formData, previewOnly) {
-                // Show loading state
-                document.getElementById('scannerConfigForm').style.opacity = '0.6';
-                document.querySelector('.progress-indicator').style.display = 'block';
-    
-                try {
-                    const response = await fetch('/preview/customize', {  // Updated route
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(formData)
-                    });
-        
+                    
                     const data = await response.json();
-        
+                    console.log('Server response:', data);
+                    
                     if (data.status === 'success') {
-                        if (previewOnly) {
-                            // Redirect to preview
-                            window.location.href = data.preview_url;
-                        } else {
-                            // Redirect to deployment page
+                        if (!previewOnly && data.deploy_url) {
                             window.location.href = data.deploy_url;
+                        } else if (data.preview_url) {
+                            window.location.href = data.preview_url;
+                        } else if (data.client_id) {
+                            // Fallback if no specific URL is provided
+                            window.location.href = `/preview/${data.client_id}`;
+                        } else {
+                            window.location.href = '/client/scanners';
                         }
                     } else {
-                        throw new Error(data.message || 'Failed to save scanner');
+                        throw new Error(data.message || 'Failed to create scanner');
                     }
                 } catch (error) {
                     console.error('Error saving scanner:', error);
@@ -684,16 +623,11 @@
                     document.querySelector('.progress-indicator').style.display = 'none';
                 }
             }
+        }
         
-     
+        // Initialize the customization system
         document.addEventListener('DOMContentLoaded', () => {
-            // Initialize the customization system
-            const scanner = new ScannerCustomization();
-    
-            // Add form submission handler
-            document.getElementById('scannerConfigForm').addEventListener('submit', function(event) {
-                submitScannerForm(event);
-            });
+            new ScannerCustomization();
         });
     </script>
 </body>
