@@ -333,7 +333,6 @@ if __name__ == "__main__":
         print("All migrations completed successfully")
     else:
         print("Migration failed")
-        s 
     # Run only the fix for users table
     fix_users_table()
     
