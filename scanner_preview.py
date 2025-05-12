@@ -159,6 +159,108 @@ def save_logo_from_base64(base64_data, scanner_id):
             os.unlink(temp_filepath)
         return None
 
+def get_client_by_user_id(user_id: int) -> dict:
+    """Get client details by user_id"""
+    conn = get_db_connection()
+    try:
+        client = conn.execute(
+            """SELECT id, user_id, primary_color, secondary_color, 
+                      created_at, updated_at 
+               FROM clients 
+               WHERE user_id = ?""",
+            (user_id,)
+        ).fetchone()
+        
+        if not client:
+            logger.warning(f"No client found for user_id: {user_id}")
+            return None
+            
+        return dict(client)
+        
+    except sqlite3.OperationalError as e:
+        logger.error(f"Database error in get_client_by_user_id: {str(e)}")
+        # If column doesn't exist, run migration
+        if "no such column" in str(e):
+            from migrations.add_client_colors import migrate
+            migrate()
+            # Retry the query after migration
+            return get_client_by_user_id(user_id)
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_client_by_user_id: {str(e)}")
+        raise
+    finally:
+        conn.close()
+        
+@scanner_preview_bp.route('/preview/customize', methods=['POST'])
+@require_login
+def customize_scanner():
+    """Main scanner creation/customization page"""
+    if request.method == 'POST':
+        # Get user_id from session
+        user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({
+                'status': 'error',
+                'message': 'User not authenticated'
+            }), 401
+        
+        data = request.get_json()
+        if data:
+            try:
+                # Pass user_id to create_client
+                client = create_client(user_id)  # Add this line
+                
+                # Create new scanner
+                scanner_id = create_scanner(data)
+                return jsonify({
+                    'status': 'success',
+                    'scanner_id': scanner_id,
+                    'preview_url': url_for('scanner_preview.preview_scanner', scanner_id=scanner_id),
+                    'deploy_url': url_for('scanner_preview.deploy_scanner', scanner_id=scanner_id)
+                })
+            except Exception as e:
+                logger.error(f"Error in customize_scanner: {str(e)}")
+                return jsonify({
+                    'status': 'error',
+                    'message': str(e)
+                }), 500
+
+def create_client(user_id: int) -> dict:
+    """Create a new client record"""
+    if not user_id:
+        raise ValueError("user_id is required")
+        
+    conn = get_db_connection()
+    try:
+        # Check if client already exists
+        existing = conn.execute(
+            "SELECT id FROM clients WHERE user_id = ?",
+            (user_id,)
+        ).fetchone()
+        
+        if existing:
+            return {'client_id': existing['id']}
+            
+        # Create new client
+        cursor = conn.execute(
+            """INSERT INTO clients (
+                user_id, primary_color, secondary_color, 
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?)""",
+            (user_id, '#FF6900', '#808588', 
+             datetime.now().isoformat(), datetime.now().isoformat())
+        )
+        
+        conn.commit()
+        return {'client_id': cursor.lastrowid}
+        
+    except Exception as e:
+        logger.error(f"Error in create_client: {str(e)}")
+        raise
+    finally:
+        conn.close()
+
 @scanner_preview_bp.route('/preview/customize', methods=['GET', 'POST'])
 @require_login
 def customize_preview_scanner():
