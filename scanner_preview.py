@@ -624,14 +624,21 @@ def create_scanner(data):
     """Create a new scanner configuration"""
     conn = get_db_connection()
     try:
-        # Get client_id from session
-        client_id = get_client_id_from_session()
-        if not client_id:
-            # Create client if it doesn't exist
-            user_id = session.get('user_id')
-            if not user_id:
-                raise ValueError("User not authenticated")
-                
+        # Get user_id and check/create client
+        user_id = session.get('user_id')
+        if not user_id:
+            raise ValueError("User not authenticated")
+
+        # Get or create client
+        client = conn.execute(
+            "SELECT id FROM clients WHERE user_id = ?",
+            (user_id,)
+        ).fetchone()
+
+        if client:
+            client_id = client['id']
+        else:
+            # Create new client
             cursor = conn.execute(
                 """INSERT INTO clients (
                     user_id, primary_color, secondary_color, 
@@ -644,7 +651,7 @@ def create_scanner(data):
                  datetime.now().isoformat(), datetime.now().isoformat())
             )
             client_id = cursor.lastrowid
-            
+
             # Create default customization
             conn.execute(
                 """INSERT INTO customizations (
@@ -652,7 +659,7 @@ def create_scanner(data):
                 ) VALUES (?, ?, ?)""",
                 (client_id, datetime.now().isoformat(), datetime.now().isoformat())
             )
-        
+
         # Generate scanner ID and subdomain
         scanner_id = str(uuid.uuid4())
         subdomain = generate_subdomain(data.get('scannerName', 'scanner'))
