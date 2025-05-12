@@ -110,44 +110,28 @@ def save_logo_from_base64(base64_data, scanner_id):
 @scanner_preview_bp.route('/customize', methods=['GET', 'POST'])
 @require_login
 def customize_scanner():
-    """Main scanner creation/customization page"""
+    """Render the scanner customization form"""
     if request.method == 'POST':
-        # Handle scanner creation
-        data = request.get_json()
-        if data:
-            try:
-                # Create new scanner
-                scanner_id = create_scanner(data)
-                return jsonify({
-                    'status': 'success',
-                    'scanner_id': scanner_id,
-                    'preview_url': url_for('scanner_preview.preview_scanner', scanner_id=scanner_id),
-                    'deploy_url': url_for('scanner_preview.deploy_scanner', scanner_id=scanner_id)
-                })
-            except Exception as e:
-                return jsonify({
-                    'status': 'error',
-                    'message': str(e)
-                }), 500
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+                
+            # Validate required fields
+            if not data.get('scannerName') or not data.get('businessDomain'):
+                return jsonify({'status': 'error', 'message': 'Scanner name and business domain are required'}), 400
+            
+            result = create_scanner(data)
+            return jsonify(result)
+            
+        except ValueError as ve:
+            return jsonify({'status': 'error', 'message': str(ve)}), 400
+        except Exception as e:
+            logging.error(f"Error creating scanner: {str(e)}")
+            return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
     
-    # Load existing scanners for the client
-    conn = get_db_connection()
-    client_id = get_client_id_from_session()
-    
-    existing_scanners = conn.execute(
-        "SELECT * FROM deployed_scanners WHERE client_id = ? ORDER BY deploy_date DESC LIMIT 5",
-        (client_id,)
-    ).fetchall()
-    
-    # Get client details
-    client = conn.execute(
-        "SELECT * FROM clients WHERE id = ?",
-        (client_id,)
-    ).fetchone()
-    
-    conn.close()
-    
-    return render_template('client/customize_scanner.html', scanners=existing_scanners, client=client)
+    # For GET requests, render the template
+    return render_template('admin/customization-form.html')
 
 @scanner_preview_bp.route('/preview/<scanner_id>')
 @require_login
