@@ -398,25 +398,43 @@ def create_scanner(data):
         scanner_id = str(uuid.uuid4())
         subdomain = generate_subdomain(data.get('scannerName', 'scanner'))
         
-        # Insert scanner record with initial deployed status
-        conn.execute(
+        # Check for duplicate subdomain
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM deployed_scanners WHERE subdomain = ?", (subdomain,))
+        if cursor.fetchone():
+            raise ValueError("Scanner with this name already exists")
+            
+        # Insert scanner record with pending status
+        cursor.execute(
             "INSERT INTO deployed_scanners (id, client_id, subdomain, domain, deploy_status, deploy_date, config_path, template_version) "
-            "VALUES (?, ?, ?, ?, 'deployed', ?, ?, '1.0')",  # Changed 'pending' to 'deployed'
+            "VALUES (?, ?, ?, ?, 'pending', ?, ?, '1.0')",
             (scanner_id, client_id, subdomain, data.get('businessDomain', ''), 
              datetime.now().isoformat(), f"/config/{scanner_id}.json")
         )
         
-        # Save configuration and commit
-        save_scanner_config(scanner_id, data)
+        # Save configuration
+        config_data = {
+            'scanner_name': data.get('scannerName'),
+            'business_domain': data.get('businessDomain'),
+            'contact_email': data.get('contactEmail'),
+            'primary_color': data.get('primaryColor'),
+            'secondary_color': data.get('secondaryColor'),
+            'default_scans': data.get('defaultScans', []),
+            'created_at': datetime.now().isoformat()
+        }
+        
+        config_path = f"/config/{scanner_id}.json"
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        with open(config_path, 'w') as f:
+            json.dump(config_data, f, indent=4)
+            
         conn.commit()
         return {'status': 'success', 'scanner_id': scanner_id}
         
     except Exception as e:
         conn.rollback()
-        return {'status': 'error', 'message': str(e)}
-    finally:
-        conn.close()
-
+        logging.error(f"Error creating scanner: {str(e)}")
+        raise
 @scanner_preview_bp.route('/api/scanner/download-report', methods=['POST'])
 @require_login
 def download_report():
