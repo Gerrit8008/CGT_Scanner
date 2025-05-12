@@ -382,7 +382,18 @@ def init_database():
 
 # Initialize the database first
 init_database()
-run_migrations()
+# Run migrations to add missing columns
+try:
+    from migrations import run_migrations
+    if run_migrations():
+        logging.info("Database migrations completed successfully")
+    else:
+        logging.warning("Some database migrations may not have completed")
+except Exception as migration_error:
+    logging.error(f"Error running migrations: {migration_error}")
+    logging.debug(traceback.format_exc())
+
+
 # Check if this is first run (database doesn't exist)
 if not os.path.exists(CLIENT_DB_PATH):
     try:
