@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS clients (
     subscription_start TEXT,
     subscription_end TEXT,
     database_name TEXT UNIQUE,  -- Store the name of client's specific database
+    primary_color TEXT,         -- Added column
     created_at TEXT,
     created_by INTEGER,
     active INTEGER DEFAULT 1,
