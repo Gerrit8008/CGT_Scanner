@@ -7,6 +7,7 @@ from functools import wraps
 import os
 import base64
 import re
+import logging 
 from werkzeug.utils import secure_filename
 
 scanner_preview_bp = Blueprint('scanner_preview', __name__)
@@ -107,12 +108,19 @@ def save_logo_from_base64(base64_data, scanner_id):
         print(f"Error saving logo: {e}")
         return None
 
-@scanner_preview_bp.route('/customize', methods=['GET', 'POST'])
+@scanner_preview_bp.route('/preview/customize', methods=['GET', 'POST'])  
 @require_login
-def customize_scanner():
+def customize_preview_scanner():
     """Render the scanner customization form"""
     if request.method == 'POST':
         try:
+            # Check content type
+            if not request.is_json:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Content-Type must be application/json'
+                }), 400
+
             data = request.get_json()
             if not data:
                 return jsonify({'status': 'error', 'message': 'No data provided'}), 400
@@ -125,6 +133,7 @@ def customize_scanner():
             return jsonify(result)
             
         except ValueError as ve:
+            logging.warning(f"Validation error: {str(ve)}")
             return jsonify({'status': 'error', 'message': str(ve)}), 400
         except Exception as e:
             logging.error(f"Error creating scanner: {str(e)}")
