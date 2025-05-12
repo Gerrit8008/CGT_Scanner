@@ -614,9 +614,6 @@ def settings(user):
                     'notification_frequency': request.form.get('notification_frequency', 'weekly')
                 }
                 
-                # Log the notification data being submitted
-                logger.info(f"Updating notification preferences with data: {notification_data}")
-                
                 # Update the client notification preferences
                 result = update_client(client['id'], notification_data, user['user_id'])
                 
@@ -676,9 +673,6 @@ def settings(user):
                     except Exception as e:
                         logger.error(f"Error updating password: {e}")
                         flash('An error occurred while updating your password', 'danger')
-            
-            # Handle other actions...
-            # 2FA, API keys, etc.
             
             # After processing form, redirect to same page to prevent form resubmission
             return redirect(url_for('client.settings'))
