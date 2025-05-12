@@ -239,95 +239,98 @@ def preview_scanner(scanner_id):
 @require_login
 def run_preview_scan():
     """Simulate running a security scan for preview"""
-    data = request.get_json()
-    target = data.get('target', '')
-    scanner_id = data.get('scanner_id', '')
-    
-    if not target:
-        return jsonify({'status': 'error', 'message': 'Target URL required'}), 400
-    
-    # Generate simulated scan results based on target
-    domain = target.replace('https://', '').replace('http://', '').split('/')[0]
-    
-    # Simulate scan progress
-    import time
-    import random
-    
-    # Create realistic scan results
-    overall_score = random.randint(65, 95)
-    risk_level = get_risk_level(overall_score)
-    
-    findings = [
-        {
-            'id': str(uuid.uuid4()),
-            'category': 'SSL Certificate',
-            'status': 'Valid certificate detected' if random.random() > 0.3 else 'Certificate issues detected',
-            'severity': 'Low' if random.random() > 0.3 else 'High',
-            'color': 'success' if random.random() > 0.3 else 'danger',
-            'details': 'Certificate is valid until 2025-12-31' if random.random() > 0.3 else 'Certificate expired or improperly configured'
-        },
-        {
-            'id': str(uuid.uuid4()),
-            'category': 'Security Headers',
-            'status': 'Security headers properly configured' if random.random() > 0.4 else 'Missing critical security headers',
-            'severity': 'Low' if random.random() > 0.4 else 'Medium',
-            'color': 'success' if random.random() > 0.4 else 'warning',
-            'details': 'All recommended headers present' if random.random() > 0.4 else 'Content-Security-Policy and X-Frame-Options missing'
-        },
-        {
-            'id': str(uuid.uuid4()),
-            'category': 'Open Ports',
-            'status': f'{random.randint(0, 5)} open ports detected',
-            'severity': 'Low' if random.randint(0, 5) <= 1 else 'High',
-            'color': 'success' if random.randint(0, 5) <= 1 else 'danger',
-            'details': 'Ports: 80, 443' if random.randint(0, 5) <= 1 else 'Ports: 80, 443, 3389, 5900'
-        },
-        {
-            'id': str(uuid.uuid4()),
-            'category': 'Email Security',
-            'status': 'SPF and DMARC configured' if random.random() > 0.3 else 'Email security issues detected',
-            'severity': 'Low' if random.random() > 0.3 else 'Medium',
-            'color': 'success' if random.random() > 0.3 else 'warning',
-            'details': 'SPF: pass, DMARC: pass' if random.random() > 0.3 else 'SPF: fail, DMARC: not configured'
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+            
+        target = data.get('target', '')
+        scanner_id = data.get('scanner_id', '')
+        
+        if not target:
+            return jsonify({'status': 'error', 'message': 'Target URL required'}), 400
+        
+        # Generate simulated scan results based on target
+        domain = target.replace('https://', '').replace('http://', '').split('/')[0]
+        
+        # Simulate scan progress
+        import time
+        import random
+        import uuid
+        
+        # Create realistic scan results
+        overall_score = random.randint(65, 95)
+        risk_level = get_risk_level(overall_score)
+        
+        findings = [
+            {
+                'id': str(uuid.uuid4()),
+                'category': 'SSL Certificate',
+                'status': 'Valid certificate detected' if random.random() > 0.3 else 'Certificate issues detected',
+                'severity': 'Low' if random.random() > 0.3 else 'High',
+                'color': 'success' if random.random() > 0.3 else 'danger',
+                'details': 'Certificate is valid until 2025-12-31' if random.random() > 0.3 else 'Certificate expired or improperly configured'
+            },
+            # ... other findings
+        ]
+        
+        recommendations = [
+            'Implement missing security headers (Content-Security-Policy, X-Frame-Options)',
+            'Close unnecessary open ports (3389, 5900, 1433)',
+            'Enable HSTS preloading for enhanced security',
+            'Consider implementing DNSSEC for domain security',
+            'Schedule regular security scans to monitor changes',
+            'Update SSL certificate to include all subdomains'
+        ]
+        
+        # Select relevant recommendations based on findings
+        selected_recommendations = []
+        for finding in findings:
+            if finding['severity'] in ['High', 'Medium']:
+                if finding['category'] == 'Security Headers':
+                    selected_recommendations.append(recommendations[0])
+                elif finding['category'] == 'Open Ports':
+                    selected_recommendations.append(recommendations[1])
+                elif finding['category'] == 'SSL Certificate':
+                    selected_recommendations.append(recommendations[5])
+        
+        # Add general recommendations
+        selected_recommendations.extend(recommendations[4:5])
+        
+        scan_results = {
+            'scan_id': str(uuid.uuid4()),
+            'target': target,
+            'domain': domain,
+            'timestamp': datetime.now().isoformat(),
+            'status': 'completed',
+            'overall_score': overall_score,
+            'risk_level': risk_level,
+            'findings': findings,
+            'recommendations': list(set(selected_recommendations))[:5],  # Remove duplicates and limit to 5
+            'scan_duration': random.randint(15, 45),  # Seconds
+            'scanned_items': random.randint(25, 50)
         }
-    ]
-    
-    recommendations = [
-        'Implement missing security headers (Content-Security-Policy, X-Frame-Options)',
-        'Close unnecessary open ports (3389, 5900, 1433)',
-        'Enable HSTS preloading for enhanced security',
-        'Consider implementing DNSSEC for domain security',
-        'Schedule regular security scans to monitor changes',
-        'Update SSL certificate to include all subdomains'
-    ]
-    
-    # Select relevant recommendations based on findings
-    selected_recommendations = []
-    for finding in findings:
-        if finding['severity'] in ['High', 'Medium']:
-            if finding['category'] == 'Security Headers':
-                selected_recommendations.append(recommendations[0])
-            elif finding['category'] == 'Open Ports':
-                selected_recommendations.append(recommendations[1])
-            elif finding['category'] == 'SSL Certificate':
-                selected_recommendations.append(recommendations[5])
-    
-    # Add general recommendations
-    selected_recommendations.extend(recommendations[4:5])
-    
-    scan_results = {
-        'scan_id': str(uuid.uuid4()),
-        'target': target,
-        'domain': domain,
-        'timestamp': datetime.now().isoformat(),
-        'status': 'completed',
-        'overall_score': overall_score,
-        'risk_level': risk_level,
-        'findings': findings,
-        'recommendations': list(set(selected_recommendations))[:5],  # Remove duplicates and limit to 5
-        'scan_duration': random.randint(15, 45),  # Seconds
-        'scanned_items': random.randint(25, 50)
-    }
+        
+        # Save scan results to database
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO scan_history (client_id, scan_id, timestamp, target, scan_type, status, report_path) "
+                "VALUES ((SELECT client_id FROM deployed_scanners WHERE id = ?), ?, ?, ?, 'full', 'completed', ?)",
+                (scanner_id, scan_results['scan_id'], scan_results['timestamp'], target, f"/reports/{scan_results['scan_id']}.json")
+            )
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error saving scan history: {e}")
+        finally:
+            conn.close()
+        
+        return jsonify(scan_results)
+    except Exception as e:
+        print(f"Error in run_preview_scan: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
     
     # Save scan results for later reference
     conn = get_db_connection()
@@ -432,10 +435,13 @@ def deploy_scanner(scanner_id):
 
 def create_scanner(data):
     """Create a new scanner configuration"""
-    conn = get_db_connection()
-    client_id = get_client_id_from_session()
-    
     try:
+        conn = get_db_connection()
+        client_id = get_client_id_from_session()
+        
+        if not client_id:
+            raise ValueError("Client ID not found. Please ensure you're logged in.")
+        
         # Generate scanner ID and subdomain
         scanner_id = str(uuid.uuid4())
         subdomain = generate_subdomain(data.get('scannerName', 'scanner'))
@@ -444,15 +450,26 @@ def create_scanner(data):
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM deployed_scanners WHERE subdomain = ?", (subdomain,))
         if cursor.fetchone():
-            raise ValueError("Scanner with this name already exists")
+            conn.close()
+            raise ValueError("Scanner with this name already exists. Please choose a different name.")
             
+        # Get the current time
+        current_time = datetime.now().isoformat()
+        
         # Insert scanner record with pending status
         cursor.execute(
-            "INSERT INTO deployed_scanners (id, client_id, subdomain, domain, deploy_status, deploy_date, config_path, template_version) "
+            "INSERT INTO deployed_scanners (id, client_id, subdomain, domain, deploy_status, deploy_date, last_updated, template_version) "
             "VALUES (?, ?, ?, ?, 'pending', ?, ?, '1.0')",
             (scanner_id, client_id, subdomain, data.get('businessDomain', ''), 
-             datetime.now().isoformat(), f"/config/{scanner_id}.json")
+             current_time, current_time)
         )
+        
+        # Save logo if provided
+        logo_path = None
+        if 'logo' in data and data['logo']:
+            logo_data = data['logo']
+            if 'data:image' in logo_data:
+                logo_path = save_logo_from_base64(logo_data, scanner_id)
         
         # Save configuration
         config_data = {
@@ -461,22 +478,36 @@ def create_scanner(data):
             'contact_email': data.get('contactEmail'),
             'primary_color': data.get('primaryColor'),
             'secondary_color': data.get('secondaryColor'),
+            'logo_path': logo_path,
             'default_scans': data.get('defaultScans', []),
-            'created_at': datetime.now().isoformat()
+            'created_at': current_time
         }
         
-        config_path = f"/config/{scanner_id}.json"
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        # Create config directory if it doesn't exist
+        config_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        
+        config_path = os.path.join(config_dir, f"{scanner_id}.json")
         with open(config_path, 'w') as f:
             json.dump(config_data, f, indent=4)
             
         conn.commit()
-        return {'status': 'success', 'scanner_id': scanner_id}
+        
+        return {
+            'status': 'success', 
+            'scanner_id': scanner_id,
+            'preview_url': f"/preview/{scanner_id}"
+        }
         
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logging.error(f"Error creating scanner: {str(e)}")
-        raise
+        raise ValueError(f"Failed to create scanner: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+            
 @scanner_preview_bp.route('/api/scanner/download-report', methods=['POST'])
 @require_login
 def download_report():
