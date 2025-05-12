@@ -655,7 +655,6 @@ def settings(user):
                 logger.info(f"Updating client profile with data: {settings_data}")
                 
                 # Update the client information in the database
-                # FIXED: Pass user_id from the user dictionary
                 result = update_client(client['id'], settings_data, user['user_id'])
                 
                 if result['status'] == 'success':
@@ -677,7 +676,7 @@ def settings(user):
                     'notification_frequency': request.form.get('notification_frequency', 'weekly')
                 }
                 
-                # FIXED: Pass user_id from the user dictionary
+                # Update the client notification preferences
                 result = update_client(client['id'], notification_data, user['user_id'])
                 
                 if result['status'] == 'success':
@@ -689,10 +688,53 @@ def settings(user):
             
             # Handle password change
             elif action == 'change_password':
-                # Password change code...
-                # ...
-            
-            # Other action handlers...
+                current_password = request.form.get('current_password')
+                new_password = request.form.get('new_password')
+                confirm_password = request.form.get('confirm_password')
+                
+                # Validate passwords
+                if not current_password or not new_password or not confirm_password:
+                    flash('All password fields are required', 'danger')
+                elif new_password != confirm_password:
+                    flash('New passwords do not match', 'danger')
+                else:
+                    # Verify current password and update to new password
+                    try:
+                        # Get user data for verification
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT password_hash, salt FROM users WHERE id = ?", (user['user_id'],))
+                        user_data = cursor.fetchone()
+                        conn.close()
+                        
+                        if not user_data:
+                            flash('User not found', 'danger')
+                        else:
+                            # Verify current password
+                            from auth_utils import hash_password
+                            current_hash, _ = hash_password(current_password, user_data['salt'])
+                            
+                            if current_hash == user_data['password_hash']:
+                                # Current password is correct, update to new password
+                                new_hash, new_salt = hash_password(new_password)
+                                
+                                # Update password in database
+                                conn = get_db_connection()
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    UPDATE users 
+                                    SET password_hash = ?, salt = ? 
+                                    WHERE id = ?
+                                """, (new_hash, new_salt, user['user_id']))
+                                conn.commit()
+                                conn.close()
+                                
+                                flash('Password updated successfully', 'success')
+                            else:
+                                flash('Current password is incorrect', 'danger')
+                    except Exception as e:
+                        logger.error(f"Error updating password: {e}")
+                        flash('An error occurred while updating your password', 'danger')
             
             # After processing form, redirect to same page to prevent form resubmission
             return redirect(url_for('client.settings'))
@@ -708,7 +750,6 @@ def settings(user):
         logger.error(f"Error in settings: {str(e)}")
         flash('An error occurred while loading settings', 'danger')
         return redirect(url_for('client.dashboard'))
-
 @client_bp.route('/profile')
 @client_required
 def profile(user):
