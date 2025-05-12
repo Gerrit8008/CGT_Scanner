@@ -200,6 +200,10 @@ def dashboard(user):
             'scanner_limit': 1  # Default scanner limit
         }
         
+        # IMPORTANT: Ensure the correct URL for the "Create New Scanner" button
+        # Make sure the button in the client-dashboard.html has the correct href
+        # It should be: href="/preview/customize" instead of href="/customize"
+        
         return render_template('client/client-dashboard.html', **template_vars)
         
     except Exception as e:
@@ -229,8 +233,7 @@ def dashboard(user):
                               scans_used=0,
                               scans_limit=50,
                               scanner_limit=1)
-
-
+        
 @client_bp.route('/scanners')
 @client_required
 def scanners(user):
