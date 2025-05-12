@@ -590,11 +590,11 @@
                                             <td>
                                                 <div class="d-flex align-items-center">
                                                     <div class="progress me-2" style="width: 60px; height: 8px;">
-                                                        <div class="progress-bar bg-{{ 'success' if scanner.security_score > 70 else 'warning' if scanner.security_score > 40 else 'danger' }}" 
-                                                             style="width: {{ scanner.security_score|default(0) }}%"></div>
+                                                        <div class="progress-bar bg-{{ 'success' if scanner.get('security_score', 0) > 70 else 'warning' if scanner.get('security_score', 0) > 40 else 'danger' }}" 
+                                                             style="width: {{ scanner.get('security_score', 0) }}%"></div>
                                                     </div>
-                                                    <span class="text-{{ 'success' if scanner.security_score > 70 else 'warning' if scanner.security_score > 40 else 'danger' }}">
-                                                        {{ scanner['security_score']|default('N/A') }}%
+                                                    <span class="text-{{ 'success' if scanner.get('security_score', 0) > 70 else 'warning' if scanner.get('security_score', 0) > 40 else 'danger' }}">
+                                                        {{ scanner.get('security_score', 'N/A') }}%
                                                     </span>
                                                 </div>
                                             </td>
