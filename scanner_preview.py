@@ -293,17 +293,19 @@ def preview_scanner(scanner_id):
         logger.error(f"Error loading preview - Scanner ID: {scanner_id} - Error: {str(e)}")
         return "Error loading preview", 500
     finally:
-        conn.close()
+        if 'conn' in locals() and conn:
+            conn.close()
         
 @scanner_preview_bp.route('/api/scanner/run-scan', methods=['POST'])
 @require_login
 def run_preview_scan():
-     """Simulate running a security scan for preview"""
+    """Simulate running a security scan for preview"""
     logger.info(f"Starting preview scan - User: {session.get('user_id')}")
     
-    data = request.get_json()
-    target = data.get('target', '')
-    scanner_id = data.get('scanner_id', '')
+    try:
+        data = request.get_json()
+        target = data.get('target', '')
+        scanner_id = data.get('scanner_id', '')
         
         if not target:        
             logger.warning(f"No target URL provided for scanner {scanner_id}")
@@ -315,7 +317,6 @@ def run_preview_scan():
         # Simulate scan progress
         import time
         import random
-        import uuid
         
         # Create realistic scan results
         overall_score = random.randint(65, 95)
@@ -373,8 +374,7 @@ def run_preview_scan():
         # Save scan results to database
         conn = get_db_connection()
         try:
-            cursor = conn.cursor()
-            cursor.execute(
+            conn.execute(
                 "INSERT INTO scan_history (client_id, scan_id, timestamp, target, scan_type, status, report_path) "
                 "VALUES ((SELECT client_id FROM deployed_scanners WHERE id = ?), ?, ?, ?, 'full', 'completed', ?)",
                 (scanner_id, scan_results['scan_id'], scan_results['timestamp'], target, f"/reports/{scan_results['scan_id']}.json")
@@ -382,30 +382,15 @@ def run_preview_scan():
             conn.commit()
         except Exception as e:
             conn.rollback()
-            print(f"Error saving scan history: {e}")
+            logger.error(f"Error saving scan history: {e}")
         finally:
             conn.close()
+            
         logger.info(f"Preview scan completed successfully for scanner {scanner_id}")
         return jsonify(scan_results)
     except Exception as e:
-        print(f"Error in run_preview_scan: {e}")
+        logger.error(f"Error in run_preview_scan: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
-    
-    # Save scan results for later reference
-    conn = get_db_connection()
-    try:
-        conn.execute(
-            "INSERT INTO scan_history (client_id, scan_id, timestamp, target, scan_type, status, report_path) "
-            "VALUES ((SELECT client_id FROM deployed_scanners WHERE id = ?), ?, ?, ?, 'full', 'completed', ?)",
-            (scanner_id, scan_results['scan_id'], scan_results['timestamp'], target, f"/reports/{scan_results['scan_id']}.json")
-        )
-        conn.commit()
-    except Exception as e:
-        print(f"Error saving scan history: {e}")
-    finally:
-        conn.close()
-    
-    return jsonify(scan_results)
 
 def get_risk_level(score):
     """Determine risk level from score"""
@@ -443,8 +428,7 @@ def save_scanner():
     
     # Validate data
     if not sanitized_data['scannerName']:
-        scanner_id = create_scanner(data)
-        logger.info(f"Scanner saved successfully - ID: {scanner_id} - User: {current_user}")
+        logger.warning(f"Scanner name missing in save request - User: {current_user}")
         return jsonify({
             'status': 'error',
             'message': 'Scanner name is required'
