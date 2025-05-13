@@ -48,6 +48,7 @@ from database_manager import DatabaseManager
 from database_utils import get_db_connection, get_client_db
 from flask_login import LoginManager, current_user, login_required  # Add login_required here
 from migrations import run_migrations
+from scanner_preview import upgrade_database_schema
 
 # Import scan functionality
 from scan import (
@@ -215,6 +216,15 @@ def create_app():
     )
     
     return app, limiter
+
+if __name__ == '__main__':
+    # Run database schema upgrade
+    if upgrade_database_schema():
+        app.logger.info("Database schema upgraded successfully")
+    else:
+        app.logger.error("Failed to upgrade database schema")
+    
+    app.run(debug=True)
 
 def init_database():
     """Initialize all database tables if they don't exist"""
