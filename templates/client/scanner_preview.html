@@ -1439,6 +1439,57 @@
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
         });
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('scanForm');
+    
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+        
+                const formData = {
+                    scannerName: document.getElementById('name').value,
+                    businessDomain: document.getElementById('company-website').value,
+                    scanTypes: Array.from(document.querySelectorAll('.scan-option.selected'))
+                        .map(option => option.dataset.type),
+                    primaryColor: getComputedStyle(document.documentElement)
+                        .getPropertyValue('--primary-color').trim(),
+                    secondaryColor: getComputedStyle(document.documentElement)
+                        .getPropertyValue('--secondary-color').trim(),
+                    industry: document.getElementById('industry').value,
+                    companySize: document.getElementById('company-size').value,
+                    additionalDomains: Array.from(document.querySelectorAll('[name="additional_domains[]"]'))
+                        .map(input => input.value)
+                        .filter(Boolean)
+                };
+
+                try {
+                    const response = await fetch('/client/scanner/customize', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(formData)
+                    });
+
+                    const data = await response.json();
+            
+                    if (data.status === 'success') {
+                        // Show preview
+                        document.getElementById('scanProgress').style.display = 'none';
+                        document.getElementById('scanComplete').style.display = 'block';
+                
+                        // Show embed code
+                        const embedSection = document.getElementById('embedSection');
+                        embedSection.style.display = 'block';
+                        document.getElementById('htmlSnippet').textContent = data.html_snippet;
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('An error occurred while saving the configuration');
+                }
+            });
+        });
     </script>
 </body>
 </html>
