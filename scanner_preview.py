@@ -4,8 +4,9 @@ import sqlite3
 import json
 import uuid
 from datetime import datetime
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, session, request, jsonify, session, redirect, url_for
 from functools import wraps
+import traceback
 import os
 import base64
 import re
