@@ -65,32 +65,26 @@ def require_login(f):
 
 def get_client_by_user_id(user_id):
     """Get client data for a specific user"""
+    conn = None
     try:
         conn = sqlite3.connect(CLIENT_DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # Change this query to properly join with customizations table
         cursor.execute('''
-            SELECT 
-                c.*,
-                cu.primary_color,
-                cu.secondary_color,
-                cu.logo_path,
-                cu.default_scans,
-                ds.subdomain,
-                ds.deploy_status
+            SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
+                   cu.default_scans, ds.subdomain, ds.deploy_status
             FROM clients c
             LEFT JOIN customizations cu ON c.id = cu.client_id
             LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
             WHERE c.user_id = ? AND c.active = 1
         ''', (user_id,))
-
+        
         row = cursor.fetchone()
         
         if not row:
             return None
-
+            
         # Convert row to dict
         client_data = dict(row)
         
@@ -98,19 +92,19 @@ def get_client_by_user_id(user_id):
         if client_data.get('default_scans'):
             try:
                 client_data['default_scans'] = json.loads(client_data['default_scans'])
-        except json.JSONDecodeError:
-            client_data['default_scans'] = []
+            except json.JSONDecodeError:
+                client_data['default_scans'] = []
         else:
             client_data['default_scans'] = []
             
         return client_data
+        
     except Exception as e:
         logging.error(f"Error getting client by user_id: {str(e)}")
         return None
     finally:
         if conn:
             conn.close()
-
 def get_client_id_from_session():
     """Get client ID from session"""
     user_id = session.get('user_id')
