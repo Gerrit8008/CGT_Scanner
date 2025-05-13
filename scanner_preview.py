@@ -105,6 +105,104 @@ def get_client_by_user_id(user_id):
     finally:
         if conn:
             conn.close()
+
+def upgrade_database_schema():
+    """Add missing columns to database tables"""
+    conn = None
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
+
+        # Add missing columns to clients table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                business_name TEXT NOT NULL,
+                business_domain TEXT NOT NULL,
+                contact_email TEXT,
+                contact_phone TEXT,
+                scanner_name TEXT,
+                subscription_level TEXT DEFAULT 'basic',
+                subscription_status TEXT DEFAULT 'active',
+                api_key TEXT,
+                created_at TEXT NOT NULL,
+                created_by INTEGER,
+                active INTEGER DEFAULT 1,
+                updated_at TEXT,
+                updated_by INTEGER
+            )
+        """)
+
+        # Add missing columns to customizations table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS customizations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                primary_color TEXT DEFAULT '#FF6900',
+                secondary_color TEXT DEFAULT '#808588',
+                logo_path TEXT,
+                favicon_path TEXT,
+                email_subject TEXT,
+                email_intro TEXT,
+                email_footer TEXT,
+                default_scans TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                updated_by INTEGER,
+                last_updated TEXT,
+                FOREIGN KEY (client_id) REFERENCES clients (id)
+            )
+        """)
+
+        # Add missing columns to deployed_scanners table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS deployed_scanners (
+                id TEXT PRIMARY KEY,
+                client_id INTEGER NOT NULL,
+                subdomain TEXT NOT NULL UNIQUE,
+                domain TEXT,
+                deploy_status TEXT DEFAULT 'pending',
+                deploy_date TEXT,
+                last_updated TEXT,
+                config_path TEXT,
+                template_version TEXT DEFAULT '1.0',
+                FOREIGN KEY (client_id) REFERENCES clients (id)
+            )
+        """)
+
+        # Add missing columns to scanner_configurations table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS scanner_configurations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scanner_id TEXT NOT NULL,
+                client_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                domain TEXT,
+                configuration TEXT,
+                api_key TEXT,
+                html_snippet TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                status TEXT DEFAULT 'active',
+                FOREIGN KEY (client_id) REFERENCES clients (id),
+                FOREIGN KEY (scanner_id) REFERENCES deployed_scanners (id)
+            )
+        """)
+
+        conn.commit()
+        logging.info("Database schema upgraded successfully")
+        return True
+
+    except Exception as e:
+        logging.error(f"Error upgrading database schema: {str(e)}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()
+
 def get_client_id_from_session():
     """Get client ID from session"""
     user_id = session.get('user_id')
