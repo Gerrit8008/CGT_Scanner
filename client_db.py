@@ -188,7 +188,149 @@ SCHEMA_SQL = """
 -- This can be empty if you're creating tables explicitly in init_client_db
 """
 
+def save_scanner_configuration(scanner_id: str, client_id: int, config_data: dict) -> dict:
+    """Save or update scanner configuration"""
+    conn = get_db_connection()
+    try:
+        # Generate API key if this is a new configuration
+        api_key = secrets.token_urlsafe(32)
+        
+        # Create HTML snippet
+        html_snippet = f"""
+<!-- CybrScan Security Scanner -->
+<div id="cybrscan-scanner" data-key="{api_key}"></div>
+<script src="https://scanner.cybrscan.com/embed.js"></script>
+"""
+        
+        # Prepare configuration JSON
+        scanner_config = {
+            'name': config_data.get('scannerName', 'Default Scanner'),
+            'domain': config_data.get('businessDomain', ''),
+            'scan_types': config_data.get('scanTypes', ['security_headers', 'ssl_certificate', 'email_security']),
+            'customization': {
+                'primary_color': config_data.get('primaryColor', '#FF6900'),
+                'secondary_color': config_data.get('secondaryColor', '#808588'),
+                'logo_url': config_data.get('logoUrl', ''),
+                'custom_css': config_data.get('customCss', ''),
+            },
+            'settings': {
+                'scan_frequency': config_data.get('scanFrequency', 'daily'),
+                'notification_email': config_data.get('notificationEmail', ''),
+                'webhook_url': config_data.get('webhookUrl', ''),
+            }
+        }
 
+        cursor = conn.cursor()
+        
+        # Check if configuration already exists
+        cursor.execute(
+            "SELECT id FROM scanner_configurations WHERE scanner_id = ?",
+            (scanner_id,)
+        )
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing configuration
+            cursor.execute("""
+                UPDATE scanner_configurations 
+                SET configuration = ?, updated_at = ?
+                WHERE scanner_id = ?
+            """, (
+                json.dumps(scanner_config),
+                datetime.now().isoformat(),
+                scanner_id
+            ))
+        else:
+            # Insert new configuration
+            cursor.execute("""
+                INSERT INTO scanner_configurations (
+                    scanner_id, client_id, name, domain,
+                    configuration, api_key, html_snippet,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                scanner_id,
+                client_id,
+                scanner_config['name'],
+                scanner_config['domain'],
+                json.dumps(scanner_config),
+                api_key,
+                html_snippet,
+                datetime.now().isoformat(),
+                datetime.now().isoformat()
+            ))
+
+        conn.commit()
+        
+        return {
+            'status': 'success',
+            'scanner_id': scanner_id,
+            'api_key': api_key,
+            'html_snippet': html_snippet
+        }
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+def get_scanner_configuration(api_key: str) -> dict:
+    """Retrieve scanner configuration by API key"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT sc.*, ds.subdomain 
+            FROM scanner_configurations sc
+            JOIN deployed_scanners ds ON sc.scanner_id = ds.id
+            WHERE sc.api_key = ? AND sc.status = 'active'
+        """, (api_key,))
+        
+        result = cursor.fetchone()
+        if result:
+            return {
+                'scanner_id': result['scanner_id'],
+                'configuration': json.loads(result['configuration']),
+                'subdomain': result['subdomain'],
+                'html_snippet': result['html_snippet']
+            }
+        return None
+    finally:
+        conn.close()
+
+# Add this initialization function to create the required table
+def init_scanner_configurations_table():
+    """Initialize scanner configurations table"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS scanner_configurations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scanner_id VARCHAR(36) NOT NULL,
+            client_id INTEGER NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            domain VARCHAR(255),
+            configuration JSON NOT NULL,
+            api_key VARCHAR(64) UNIQUE NOT NULL,
+            html_snippet TEXT,
+            status VARCHAR(50) DEFAULT 'active',
+            version VARCHAR(10) DEFAULT '1.0',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (client_id) REFERENCES clients(id),
+            FOREIGN KEY (scanner_id) REFERENCES deployed_scanners(id)
+        )
+        ''')
+        
+        cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_scanner_api_key 
+        ON scanner_configurations(api_key)
+        ''')
+        
+        conn.commit()
+    finally:
+        conn.close()
 
 def with_transaction(func):
     @functools.wraps(func)
