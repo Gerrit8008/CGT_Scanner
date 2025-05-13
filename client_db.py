@@ -1,5 +1,4 @@
 # Enhanced client_db.py with better structure and relations
-
 import os
 import sqlite3
 import json
@@ -25,6 +24,24 @@ logger = logging.getLogger(__name__)
 
 # Define database path
 CLIENT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_scanner.db')
+
+def with_transaction(func):
+    """Decorator to handle database transactions"""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            result = func(conn, *args, **kwargs)
+            conn.commit()
+            return result
+        except Exception as e:
+            conn.rollback()
+            logging.error(f"Transaction error in {func.__name__}: {e}")
+            return {'status': 'error', 'message': str(e)}
+        finally:
+            conn.close()
+    return wrapper
 
 # Create the schema string for initialization
 SCHEMA_SQL = """
