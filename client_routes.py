@@ -16,55 +16,38 @@ client_bp = Blueprint('client', __name__, url_prefix='/client')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-@client_bp.route('/scanner/customize', methods=['GET', 'POST'])
+@client_bp.route('/scanner/customize/<scanner_id>', methods=['GET', 'POST'])
 @admin_required
-def customize_scanner(user):
+def customize_scanner(user, scanner_id):
     """Scanner customization page"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Get user's client if associated
-    client = None
-    if user and 'id' in user:
-        cursor.execute('''
-        SELECT * FROM clients 
-        WHERE user_id = ? AND active = 1
-        ''', (user['id'],))
-        client_row = cursor.fetchone()
-        if client_row:
-            client = dict(client_row)
-    
     if request.method == 'POST':
         try:
             data = request.get_json()
-            client_id = client['id'] if client else None
             
-            if not client_id:
-                return jsonify({'status': 'error', 'message': 'No client associated with user'}), 400
-            
-            # Create scanner configuration
+            # Save scanner configuration
             result = save_scanner_configuration(
-                scanner_id=str(uuid.uuid4()),
-                client_id=client_id,
+                scanner_id=scanner_id,
+                client_id=get_client_id_from_session(),
                 config_data=data
             )
             
             return jsonify({
                 'status': 'success',
-                'scanner_id': result['scanner_id'],
                 'preview_url': url_for('client.preview_scanner', 
                                      api_key=result['api_key'], 
                                      _external=True),
-                'html_snippet': result['html_snippet']
+                'html_snippet': result['html_snippet'],
+                'embed_script': result['embed_script']
             })
         except Exception as e:
-            logger.error(f"Error creating scanner: {e}")
             return jsonify({'status': 'error', 'message': str(e)}), 500
     
-    conn.close()
+    # Get existing configuration if any
+    scanner = get_scanner_by_id(scanner_id)
+    
     return render_template('client/customize_scanner.html', 
-                         user=user,
-                         client=client)
+                         scanner=scanner,
+                         user=user)
 
 @client_bp.route('/scanner/preview/<api_key>')
 def preview_scanner(api_key):
@@ -88,6 +71,36 @@ def get_scanner_config(api_key):
                 'configuration': config
             })
         return jsonify({'status': 'error', 'message': 'Scanner not found'}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@client_bp.route('/api/scanner/<api_key>/scan', methods=['POST'])
+def run_scanner_scan(api_key):
+    """Run a scan using scanner configuration"""
+    try:
+        config = get_scanner_configuration(api_key)
+        if not config:
+            return jsonify({'status': 'error', 'message': 'Scanner not found'}), 404
+        
+        # Get scan parameters from request
+        scan_data = request.get_json()
+        
+        # Validate scan request
+        if not scan_data.get('target'):
+            return jsonify({'status': 'error', 'message': 'Target URL required'}), 400
+            
+        # Run the scan
+        scan_results = run_consolidated_scan({
+            'target': scan_data['target'],
+            'email': scan_data.get('email'),
+            'scan_types': config['configuration']['scan_types']
+        })
+        
+        return jsonify({
+            'status': 'success',
+            'scan_id': scan_results['scan_id'],
+            'results': scan_results
+        })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
