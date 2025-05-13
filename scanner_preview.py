@@ -147,7 +147,7 @@ def generate_subdomain(scanner_name):
 # Generate API key
 def generate_api_key():
     """Generate a secure API key"""
-        return secrets.token_urlsafe(32)
+    return secrets.token_urlsafe(32)
 
 def create_client(client_data, user_id=None):
     """Create a new client record
@@ -408,136 +408,6 @@ def get_scanner_configuration(api_key: str) -> dict:
         return None
     finally:
         conn.close()
-
-        # Prepare client data
-        now = datetime.now().isoformat()
-        
-        # Extract/validate required fields
-        business_name = client_data.get('business_name', client_data.get('scannerName', ''))
-        business_domain = client_data.get('business_domain', client_data.get('businessDomain', ''))
-        contact_email = client_data.get('contact_email', client_data.get('contactEmail', ''))
-        
-        if not business_name or not business_domain or not contact_email:
-            conn.close()
-            return {'status': 'error', 'message': 'Missing required fields'}
-        
-        # Get or create user_id if not provided
-        if not user_id:
-            user_id = session.get('user_id')
-            
-        if not user_id:
-            conn.close()
-            return {'status': 'error', 'message': 'User ID not provided or found in session'}
-        
-        # Insert the client
-        cursor.execute("""
-            INSERT INTO clients (
-                user_id, business_name, business_domain, contact_email, contact_phone,
-                scanner_name, subscription_level, subscription_status,
-                api_key, created_at, created_by, active, primary_color, secondary_color
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-        """, (
-            user_id,
-            business_name,
-            business_domain,
-            contact_email,
-            client_data.get('contact_phone', client_data.get('contactPhone', '')),
-            client_data.get('scanner_name', business_name),
-            client_data.get('subscription', 'basic'),
-            'active',
-            api_key,
-            now,
-            user_id,
-            client_data.get('primaryColor', '#FF6900'),
-            client_data.get('secondaryColor', '#808588')
-        ))
-        
-        # Get the new client ID
-        client_id = cursor.lastrowid
-        
-        # Insert customization data if provided
-        customization_data = {
-            'client_id': client_id,
-            'primary_color': client_data.get('primaryColor', client_data.get('primary_color', '#FF6900')),
-            'secondary_color': client_data.get('secondaryColor', client_data.get('secondary_color', '#808588')),
-            'last_updated': now,
-            'updated_by': user_id
-        }
-        
-        # Add optional customization fields if provided
-        for field in ['logo_path', 'favicon_path', 'email_subject', 'email_intro', 'email_footer']:
-            field_key = field
-            alt_key = ''.join(word.capitalize() if i > 0 else word for i, word in enumerate(field.split('_')))
-            
-            if field_key in client_data and client_data[field_key]:
-                customization_data[field_key] = client_data[field_key]
-            elif alt_key in client_data and client_data[alt_key]:
-                customization_data[field_key] = client_data[alt_key]
-        
-        # Store default_scans as JSON string if provided
-        if 'default_scans' in client_data and client_data['default_scans']:
-            if isinstance(client_data['default_scans'], list):
-                customization_data['default_scans'] = json.dumps(client_data['default_scans'])
-            else:
-                customization_data['default_scans'] = client_data['default_scans']
-        elif 'defaultScans' in client_data and client_data['defaultScans']:
-            if isinstance(client_data['defaultScans'], list):
-                customization_data['default_scans'] = json.dumps(client_data['defaultScans'])
-            else:
-                customization_data['default_scans'] = client_data['defaultScans']
-        
-        # Insert customizations
-        columns = ', '.join(customization_data.keys())
-        placeholders = ', '.join(['?'] * len(customization_data))
-        cursor.execute(f"INSERT INTO customizations ({columns}) VALUES ({placeholders})",
-                      list(customization_data.values()))
-        
-        # Generate subdomain for scanner
-        subdomain = business_name.lower().replace(' ', '-')
-        subdomain = ''.join(c for c in subdomain if c.isalnum() or c == '-')
-        
-        # Check if subdomain exists, add random suffix if needed
-        cursor.execute("SELECT id FROM deployed_scanners WHERE subdomain = ?", (subdomain,))
-        if cursor.fetchone():
-            import random
-            subdomain = f"{subdomain}-{random.randint(100, 999)}"
-        
-        # Create a deployed scanner record
-        cursor.execute("""
-            INSERT INTO deployed_scanners (
-                client_id, subdomain, deploy_status, deploy_date, 
-                last_updated, template_version
-            ) VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            client_id,
-            subdomain,
-            'pending',  # New scanners start as pending
-            now,
-            now,
-            '1.0'
-        ))
-        
-        scanner_id = cursor.lastrowid
-        
-        conn.commit()
-        conn.close()
-        
-        return {
-            'status': 'success', 
-            'client_id': client_id,
-            'scanner_id': scanner_id,
-            'api_key': api_key
-        }
-        
-    except Exception as e:
-        import logging
-        logging.error(f"Error creating client: {str(e)}")
-        import traceback
-        logging.error(traceback.format_exc())
-        if 'conn' in locals():
-            conn.rollback()
-            conn.close()
-        return {'status': 'error', 'message': str(e)}
 
 def save_logo_from_base64(base64_data, scanner_id):
     """Save logo from base64 data with improved validation"""
@@ -974,11 +844,14 @@ def create_scanner(data):
         save_scanner_config(scanner_id, data)
         conn.commit()
         
-        return scanner_id
+        return {
+            'status': 'success',
+            'scanner_id': scanner_id
+        }
         
     except Exception as e:
         conn.rollback()
-        raise
+        return {'status': 'error', 'message': str(e)}
     finally:
         conn.close()
             
