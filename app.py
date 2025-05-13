@@ -1,4 +1,4 @@
-
+# Import necessary modules
 import logging
 import os
 import sqlite3
@@ -8,49 +8,29 @@ import re
 import uuid
 from werkzeug.utils import secure_filename
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import sys
 import traceback
 import requests
-from datetime import timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from dotenv import load_dotenv
+from flask_login import LoginManager, current_user
+
+# Import custom modules
 from email_handler import send_email_report
 from config import get_config
-from dotenv import load_dotenv
-from flask import Blueprint
-from api import api_bp  # Import the new API blueprint
+from api import api_bp
 from client_db import init_client_db, CLIENT_DB_PATH, init_scanner_configurations_table
 from scanner_router import scanner_bp
 from auth import auth_bp
 from admin import admin_bp
-from api import api_bp
-from scanner_router import scanner_bp
 from setup_admin import configure_admin
-from client import client_bp  
-from flask_login import LoginManager, current_user
-from auth_routes import auth_bp
-from debug_middleware import register_debug_middleware
-from fix_auth import create_user
-from auth import auth_bp
-from auth_hotfix import register_auth_hotfix
-from emergency_access import emergency_bp
-from register_routes import register_all_routes
-from admin_fix_integration import apply_admin_fixes
-from admin_route_fix import apply_admin_route_fixes
-from route_fix import fix_admin_routes
-from admin_fix_web import add_admin_fix_route
-from scanner_preview import scanner_preview_bp
-from database_manager import DatabaseManager
-from database_utils import get_db_connection, get_client_db
-from flask_login import LoginManager, current_user, login_required  # Add login_required here
+from client import client_bp
 from migrations import run_migrations
-from scanner_preview import upgrade_database_schema
-
-# Import scan functionality
 from scan import (
     extract_domain_from_email,
     server_lookup,
@@ -82,9 +62,82 @@ from scan import (
     calculate_industry_percentile
 )
 
-# Current system information
-CURRENT_UTC_TIME = "2025-05-13 16:25:41"
-CURRENT_USER = "Gerrit8008"
+# Constants
+SEVERITY = {
+    "Critical": 10,
+    "High": 7,
+    "Medium": 5,
+    "Low": 2,
+    "Info": 1
+}
+
+SEVERITY_ICONS = {
+    "Critical": "❌",
+    "High": "⚠️",
+    "Medium": "⚠️",
+    "Low": "ℹ️"
+}
+
+GATEWAY_PORT_WARNINGS = {
+    21: ("FTP (insecure)", "High"),
+    23: ("Telnet (insecure)", "High"),
+    80: ("HTTP (no encryption)", "Medium"),
+    443: ("HTTPS", "Low"),
+    3389: ("Remote Desktop (RDP)", "Critical"),
+    5900: ("VNC", "High"),
+    22: ("SSH", "Low"),
+}
+
+# Setup logging
+def setup_logging():
+    """Configure application logging"""
+    logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
+    log_filename = os.path.join(logs_dir, f"security_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(funcName)s - Line %(lineno)d - %(message)s')
+    console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(file_formatter)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(console_formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    logger.info("Application started")
+    logger.info(f"Detailed logs will be saved to: {log_filename}")
+
+    return logger
+
+# Initialize logging
+logger = setup_logging()
+
+# Import database functionality
+from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
+
+# Initialize database manager
+db_manager = DatabaseManager()
+
+# Log system info
+log_system_info()
+
+# Define upload folder for file uploads
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Make sure the directory exists
+os.makedirs(os.path.dirname(CLIENT_DB_PATH), exist_ok=True)
 
 # Configure scanner preview initialization
 def init_scanner_preview_tables():
@@ -117,137 +170,19 @@ def init_scanner_preview_tables():
     conn.commit()
     conn.close()
 
-# Configure upload settings for scanner preview
-SCANNER_UPLOAD_FOLDER = os.path.join('static', 'uploads', 'logos')
-os.makedirs(SCANNER_UPLOAD_FOLDER, exist_ok=True)
-app.config['SCANNER_UPLOAD_FOLDER'] = SCANNER_UPLOAD_FOLDER
-
 # Initialize scanner preview at app startup
 try:
     init_scanner_preview_tables()
-    app.config['SCANNER_UPLOAD_FOLDER'] = SCANNER_UPLOAD_FOLDER
-    app.config['LAST_INIT_TIME'] = CURRENT_UTC_TIME
-    app.config['LAST_INIT_USER'] = CURRENT_USER
     logging.info("Scanner preview initialized successfully")
 except Exception as e:
     logging.error(f"Error initializing scanner preview: {e}")
 
-# Define upload folder for file uploads
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# Make sure the directory exists
-os.makedirs(os.path.dirname(CLIENT_DB_PATH), exist_ok=True)
-
-# Import database functionality
-from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
-
-# Initialize database manager
-db_manager = DatabaseManager()
-
-# Load environment variables
-load_dotenv()
-
-# Constants
-SEVERITY = {
-    "Critical": 10,
-    "High": 7,
-    "Medium": 5,
-    "Low": 2,
-    "Info": 1
-}
-
-SEVERITY_ICONS = {
-    "Critical": "❌",
-    "High": "⚠️",
-    "Medium": "⚠️",
-    "Low": "ℹ️"
-}
-
-GATEWAY_PORT_WARNINGS = {
-    21: ("FTP (insecure)", "High"),
-    23: ("Telnet (insecure)", "High"),
-    80: ("HTTP (no encryption)", "Medium"),
-    443: ("HTTPS", "Low"),
-    3389: ("Remote Desktop (RDP)", "Critical"),
-    5900: ("VNC", "High"),
-    22: ("SSH", "Low"),
-}
-
-# Setup logging
-def setup_logging():
-    """Configure application logging"""
-    # Create logs directory
-    logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
-    os.makedirs(logs_dir, exist_ok=True)
-    
-    log_filename = os.path.join(logs_dir, f"security_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    
-    # Configure root logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    
-    # Remove any existing handlers
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-    
-    # Create formatters
-    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(funcName)s - Line %(lineno)d - %(message)s')
-    console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    
-    # File handler (detailed)
-    file_handler = logging.FileHandler(log_filename)
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(file_formatter)
-    
-    # Console handler (less detailed)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(console_formatter)
-    
-    # Add handlers
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    logger.info("Application started")
-    logger.info(f"Detailed logs will be saved to: {log_filename}")
-    
-    return logger
-
-def log_system_info():
-    """Log details about the system environment"""
-    logger = logging.getLogger(__name__)
-    
-    logger.info("----- System Information -----")
-    logger.info(f"Python version: {sys.version}")
-    logger.info(f"Platform: {platform.platform()}")
-    logger.info(f"Working directory: {os.getcwd()}")
-    logger.info(f"Database path: {DB_PATH}")
-    
-    # Test database connection
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT sqlite_version()")
-        version = cursor.fetchone()
-        logger.info(f"SQLite version: {version[0]}")
-        conn.close()
-        logger.info("Database connection successful")
-    except Exception as e:
-        logger.warning(f"Database connection failed: {e}")
-    
-    logger.info("-----------------------------")
-
-# Initialize logging
-logger = setup_logging()
-log_system_info()
+# Configure upload settings for scanner preview
+SCANNER_UPLOAD_FOLDER = os.path.join('static', 'uploads', 'logos')
+os.makedirs(SCANNER_UPLOAD_FOLDER, exist_ok=True)
 
 def create_app():
     """Create and configure the Flask application"""
-    from flask import Flask
-    from flask_limiter import Limiter
-    from flask_limiter.util import get_remote_address
-    
     app = Flask(__name__)
     app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 
@@ -266,15 +201,6 @@ def create_app():
     )
     
     return app, limiter
-
-if __name__ == '__main__':
-    # Run database schema upgrade
-    if upgrade_database_schema():
-        app.logger.info("Database schema upgraded successfully")
-    else:
-        app.logger.error("Failed to upgrade database schema")
-    
-    app.run(debug=True)
 
 def init_database():
     """Initialize all database tables if they don't exist"""
@@ -445,6 +371,7 @@ def init_database():
 
 # Initialize the database first
 init_database()
+
 # Run migrations to add missing columns
 try:
     from migrations import run_migrations
@@ -455,7 +382,6 @@ try:
 except Exception as migration_error:
     logging.error(f"Error running migrations: {migration_error}")
     logging.debug(traceback.format_exc())
-
 
 # Check if this is first run (database doesn't exist)
 if not os.path.exists(CLIENT_DB_PATH):
@@ -477,103 +403,15 @@ except Exception as app_create_error:
     app.secret_key = 'fallback_secret_key'
     limiter = None
 
+# Configure upload settings for scanner preview after app creation
+app.config['SCANNER_UPLOAD_FOLDER'] = SCANNER_UPLOAD_FOLDER
+app.config['LAST_INIT_TIME'] = CURRENT_UTC_TIME
+app.config['LAST_INIT_USER'] = CURRENT_USER
+
 # Initialize Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
-
-@app.route('/run_migrations')
-def run_migrations_route():
-    """Run database migrations on demand"""
-    try:
-        from migrations import run_migrations
-        result = run_migrations()
-        
-        # Check schema after migrations
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        cursor = conn.cursor()
-        
-        # Check clients table schema
-        cursor.execute("PRAGMA table_info(clients)")
-        client_columns = [col[1] for col in cursor.fetchall()]
-        
-        # Check customizations table schema
-        cursor.execute("PRAGMA table_info(customizations)")
-        custom_columns = [col[1] for col in cursor.fetchall()]
-        
-        conn.close()
-        
-        return jsonify({
-            'migration_success': result,
-            'clients_table_columns': client_columns,
-            'customizations_table_columns': custom_columns,
-            'message': 'Migrations completed successfully' if result else 'Some migrations may have failed'
-        })
-    except Exception as e:
-        return jsonify({
-            'migration_success': False,
-            'error': str(e),
-            'traceback': traceback.format_exc()
-        }), 500
-
-#@app.route('/your-route')
-#def your_route():
-#    """Route description"""
-#    return jsonify({'status': 'success', 'data': your_data})
-
-#@app.route('/your-route-with-params/<param_id>')
-#def your_route_with_params(param_id):
-#    """Route with parameters description"""
-#    return jsonify({'status': 'success', 'param': param_id})
-
-#@app.route('/api/v1/your-api-route')
-#def api_your_route():
-#    """API endpoint description"""
-#    return jsonify({
-#        'status': 'success',
- #       'data': your_api_data
- #   })
-
-@app.errorhandler(404)
-def not_found_error(error):
-    """Handle 404 errors"""
-    return jsonify({
-        'status': 'error',
-        'message': 'Resource not found'
-    }), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    """Handle 500 errors"""
-    return jsonify({
-        'status': 'error',
-        'message': 'Internal server error'
-    }), 500
-
-#@app.route('/auth/your-auth-route')
-#@login_required
-#def your_auth_route():
-#    """Protected route description"""
-#    return jsonify({
-#        'status': 'success',
-#        'user_data': get_user_data()
-#    })
-    
-#@app.route('/api/v1/your-api-route', methods=['POST'])
-#def api_post_route():
-#    """API POST endpoint description"""
-#    data = request.get_json()
-#    # Process your data here
-#    return jsonify({
- #       'status': 'success',
-#        'message': 'Data processed successfully'
- #   })
-
-#@app.route('/your-post-route', methods=['POST'])
-#def your_post_route():
-#    """POST route description"""
-#    data = request.get_json()
-#    return jsonify({'status': 'success', 'received': data})
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -611,6 +449,7 @@ try:
 except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
+
 # Apply fixes
 try:
     apply_admin_fixes(app)
@@ -645,7 +484,63 @@ except ImportError:
     logging.warning("Could not import admin_routes_bp")
 except Exception as e:
     logging.error(f"Error registering admin_routes_bp: {e}")
-    
+
+# Now define all routes that need the app instance
+
+@app.route('/run_migrations')
+def run_migrations_route():
+    """Run database migrations on demand"""
+    try:
+        from migrations import run_migrations
+        result = run_migrations()
+        
+        # Check schema after migrations
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check clients table schema
+        cursor.execute("PRAGMA table_info(clients)")
+        client_columns = [col[1] for col in cursor.fetchall()]
+        
+        # Check customizations table schema
+        cursor.execute("PRAGMA table_info(customizations)")
+        custom_columns = [col[1] for col in cursor.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            'migration_success': result,
+            'clients_table_columns': client_columns,
+            'customizations_table_columns': custom_columns,
+            'message': 'Migrations completed successfully' if result else 'Some migrations may have failed'
+        })
+    except Exception as e:
+        return jsonify({
+            'migration_success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+# Helper function for direct database calls if needed
+def create_client_direct(conn, cursor, client_data, user_id):
+    """Direct database call to create client"""
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    return jsonify({
+        'status': 'error',
+        'message': 'Resource not found'
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    return jsonify({
+        'status': 'error',
+        'message': 'Internal server error'
+    }), 500
+
 @app.route('/auth_status')
 def auth_status():
     """Route to check authentication system status"""
@@ -798,7 +693,7 @@ def direct_db_fix():
     except Exception as e:
         results.append(f"Error: {str(e)}")
         return "<br>".join(results)
-        
+
 @app.errorhandler(404)
 def handle_404(error):
     # Pass current_user explicitly in the context
@@ -915,11 +810,1161 @@ def customize_scanner():
     logging.info("Rendering customization form")
     return render_template('admin/customization-form.html')
 
+# Try to extract network type
+                if "Network Type:" in gateway_info:
+                    try:
+                        network_type = gateway_info.split("Network Type:")[1].split("|")[0].strip()
+                        logging.debug(f"Extracted network type: {network_type}")
+                    except:
+                        logging.warning("Failed to extract network type from gateway info")
+                
+                # Try to extract gateway guesses
+                if "Likely gateways:" in gateway_info:
+                    try:
+                        gateways_part = gateway_info.split("Likely gateways:")[1].strip()
+                        if "|" in gateways_part:
+                            gateways_part = gateways_part.split("|")[0].strip()
+                        gateway_guesses = [g.strip() for g in gateways_part.split(",")]
+                        logging.debug(f"Extracted gateway guesses: {gateway_guesses}")
+                    except:
+                        logging.warning("Failed to extract gateway guesses from gateway info")
 
-# Helper function for direct database calls if needed
-def create_client_direct(conn, cursor, client_data, user_id):
-    """Direct database call to create client"""
-    import uuid
+        # Add additional logging for troubleshooting
+        logging.info(f"Rendering results template with scan_id: {scan_id}")
+        logging.info(f"Template variables: client_ip={client_ip}, network_type={network_type}, gateway_guesses={len(gateway_guesses)}")
+        
+        # Now render template with all required data
+        return render_template('results.html', 
+                               scan=scan_results,
+                               client_ip=client_ip,
+                               gateway_guesses=gateway_guesses,
+                               network_type=network_type,
+                               gateway_info=gateway_info)
+
+    except Exception as e:
+        logging.error(f"Error loading scan results: {e}")
+        logging.debug(f"Exception traceback: {traceback.format_exc()}")
+        return render_template('error.html', error=f"Error loading scan results: {str(e)}")
+        
+@app.route('/api/email_report', methods=['POST'])
+def api_email_report():
+    try:
+        # Get data from request
+        scan_id = request.form.get('scan_id')
+        email = request.form.get('email')
+        
+        logging.info(f"Email report requested for scan_id: {scan_id} to email: {email}")
+        
+        if not scan_id or not email:
+            logging.error("Missing required parameters (scan_id or email)")
+            return jsonify({"status": "error", "message": "Missing required parameters"})
+        
+        # Get scan data from database 
+        scan_data = get_scan_results(scan_id)
+        
+        if not scan_data:
+            logging.error(f"Scan data not found for ID: {scan_id}")
+            return jsonify({"status": "error", "message": "Scan data not found"})
+        
+        # Create a lead_data dictionary for the email function
+        lead_data = {
+            "email": email,
+            "name": scan_data.get('client_info', {}).get('name', ''),
+            "company": scan_data.get('client_info', {}).get('company', ''),
+            "phone": scan_data.get('client_info', {}).get('phone', ''),
+            "timestamp": scan_data.get('timestamp', '')
+        }
+        
+        # Use the complete HTML that was stored during scan
+        if 'complete_html_report' in scan_data and scan_data['complete_html_report']:
+            html_report = scan_data['complete_html_report']
+            logging.info("Using stored complete HTML report")
+        else:
+            # Fallback to either stored 'html_report' or re-render
+            html_report = scan_data.get('html_report', '')
+            
+            # If neither complete nor basic HTML report is available, try to re-render
+            if not html_report:
+                try:
+                    logging.warning("Complete HTML report not found, attempting to re-render")
+                    html_report = render_template('results.html', scan=scan_data)
+                except Exception as render_error:
+                    logging.error(f"Error rendering HTML report: {render_error}")
+        
+        # Send email using the updated function
+        logging.info(f"Attempting to send email report to {email}")
+        email_sent = send_email_report(lead_data, scan_data, html_report)
+        
+        if email_sent:
+            logging.info(f"Email report successfully sent to {email}")
+            return jsonify({"status": "success"})
+        else:
+            logging.error(f"Failed to send email report to {email}")
+            return jsonify({"status": "error", "message": "Failed to send email"})
+            
+    except Exception as e:
+        logging.error(f"Error in email report API: {e}")
+        logging.debug(traceback.format_exc())
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/simple_scan')
+def simple_scan():
+    """A completely simplified scan that bypasses all complexity"""
+    try:
+        # Create a simple scan result
+        scan_id = str(uuid.uuid4())
+        timestamp = datetime.now().isoformat()
+        
+        # Return results directly without database or sessions
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Simple Scan Results</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                .section {{ padding: 15px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; }}
+            </style>
+        </head>
+        <body>
+            <h1>Simple Scan Results</h1>
+            
+            <div class="section">
+                <h2>Scan Information</h2>
+                <p><strong>Scan ID:</strong> {scan_id}</p>
+                <p><strong>Timestamp:</strong> {timestamp}</p>
+            </div>
+            
+            <div class="section">
+                <h2>Sample Results</h2>
+                <p>This is a simple test page that bypasses all complex functionality.</p>
+                <ul>
+                    <li>Keep all software updated with security patches</li>
+                    <li>Use strong, unique passwords</li>
+                    <li>Enable multi-factor authentication where possible</li>
+                </ul>
+            </div>
+            
+            <a href="/scan">Run a real scan</a>
+        </body>
+        </html>
+        """
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+@app.route('/db_check')
+def db_check():
+    """Check if the database is set up and working properly"""
+    try:
+        # Try to connect to the database
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if tables exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = cursor.fetchall()
+        
+        # Get count of records in each table
+        table_counts = {}
+        for table in tables:
+            table_name = table[0]
+            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            count = cursor.fetchone()[0]
+            table_counts[table_name] = count
+        
+        conn.close()
+        
+        return jsonify({
+            "status": "success",
+            "database_path": DB_PATH,
+            "tables": [table[0] for table in tables],
+            "record_counts": table_counts,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "trace": traceback.format_exc()
+        })
+
+@app.route('/test_db_write')
+def test_db_write():
+    """Test direct database write functionality"""
+    try:
+        # Create test data
+        test_data = {
+            'scan_id': str(uuid.uuid4()),
+            'timestamp': datetime.now().isoformat(),
+            'target': 'test.com',
+            'email': 'test@example.com',
+            'test_field': 'This is a test'
+        }
+        
+        # Try to save to database
+        saved_id = save_scan_results(test_data)
+        
+        if saved_id:
+            # Try to retrieve it
+            retrieved = get_scan_results(saved_id)
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Database write and read successful',
+                'saved_id': saved_id,
+                'retrieved': retrieved is not None,
+                'record_matches': retrieved is not None and retrieved.get('test_field') == test_data['test_field']
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Database write failed - save_scan_results returned None or False'
+            })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Exception during database test: {str(e)}',
+            'traceback': traceback.format_exc()
+        })
+
+@app.route('/clear_session')
+def clear_session():
+    """Clear the current session to start fresh"""
+    # Clear existing session data
+    session.clear()
+    logging.info("Session cleared")
+    
+    return jsonify({
+        "status": "success",
+        "message": "Session cleared successfully. You can now run a new scan.",
+        "redirect": url_for('scan_page')
+    })
+
+@app.route('/api/scan', methods=['POST'])
+@limiter.limit("5 per minute")
+def api_scan():
+    """API endpoint for scan requests"""
+    try:
+        # Get client info from authentication
+        client_id = get_client_id_from_request()
+        scanner_id = request.form.get('scanner_id')
+        
+        # Run the scan
+        scan_results = run_consolidated_scan(request.form)
+        
+        # Save to client's database
+        with get_client_db(db_manager, client_id) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO scans (
+                    scanner_id, scan_timestamp, target, 
+                    scan_type, status, results, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                scanner_id,
+                datetime.now().isoformat(),
+                scan_results['target'],
+                scan_results['type'],
+                'completed',
+                json.dumps(scan_results['results']),
+                datetime.now().isoformat()
+            ))
+            conn.commit()
+            
+        return jsonify({
+            "status": "success",
+            "scan_id": scan_results['scan_id'],
+            "message": "Scan completed successfully."
+        })
+            
+    except Exception as e:
+        logging.error(f"Error in API scan: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"An error occurred during the scan: {str(e)}"
+        }), 500
+        
+@app.route('/results_direct')
+def results_direct():
+    """Display scan results directly from query parameter"""
+    scan_id = request.args.get('scan_id')
+    
+    if not scan_id:
+        return "No scan ID provided", 400
+    
+    try:
+        # Get results from database
+        scan_results = get_scan_results(scan_id)
+        
+        if not scan_results:
+            return f"No results found for scan ID: {scan_id}", 404
+        
+        # Return a simplified view of the results
+        return f"""
+        <html>
+            <head>
+                <title>Scan Results</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .section {{ margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }}
+                </style>
+            </head>
+            <body>
+                <h1>Scan Results</h1>
+                
+                <div class="section">
+                    <h2>Scan Information</h2>
+                    <p><strong>Scan ID:</strong> {scan_results['scan_id']}</p>
+                    <p><strong>Timestamp:</strong> {scan_results['timestamp']}</p>
+                    <p><strong>Email:</strong> {scan_results['email']}</p>
+                </div>
+                
+                <div class="section">
+                    <h2>Risk Assessment</h2>
+                    <p><strong>Overall Score:</strong> {scan_results['risk_assessment']['overall_score']}</p>
+                    <p><strong>Risk Level:</strong> {scan_results['risk_assessment']['risk_level']}</p>
+                </div>
+                
+                <div class="section">
+                    <h2>Recommendations</h2>
+                    <ul>
+                        {''.join([f'<li>{r}</li>' for r in scan_results['recommendations']])}
+                    </ul>
+                </div>
+                
+                <a href="/scan">Run another scan</a>
+            </body>
+        </html>
+        """
+    except Exception as e:
+        return f"Error loading results: {str(e)}", 500
+    
+@app.route('/quick_scan', methods=['GET', 'POST'])
+def quick_scan():
+    if request.method == 'POST':
+        try:
+            email = request.form.get('email', '')
+            
+            if not email:
+                return "Email is required", 400
+            
+            # Extract domain from email
+            domain = extract_domain_from_email(email)
+            
+            # Create minimal test data
+            test_data = {
+                'name': 'Test User',
+                'email': email,
+                'company': 'Test Company',
+                'phone': '555-1234',
+                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'client_os': 'Test OS',
+                'client_browser': 'Test Browser',
+                'windows_version': '',
+                'target': domain  # Use extracted domain
+            }
+            
+            logging.info(f"Starting quick scan for {email}...")
+            scan_results = run_consolidated_scan(test_data)
+            
+            if not scan_results or 'scan_id' not in scan_results:
+                return "Scan failed to complete", 500
+            
+            # Save to database
+            saved_id = save_scan_results(scan_results)
+            if not saved_id:
+                return "Failed to save scan results", 500
+            
+            # Redirect to results
+            return redirect(url_for('results_direct', scan_id=scan_results['scan_id']))
+        except Exception as e:
+            logging.error(f"Error in quick_scan: {e}")
+            return f"Error: {str(e)}", 500
+    
+    # Simple form for GET requests
+    return """
+    <html>
+        <head><title>Quick Scan Test</title></head>
+        <body>
+            <h1>Quick Scan Test</h1>
+            <form method="post">
+                <div>
+                    <label>Email: <input type="email" name="email" required></label>
+                </div>
+                <div>
+                    <label>Target (optional): <input type="text" name="target"></label>
+                </div>
+                <button type="submit">Run Quick Scan</button>
+            </form>
+        </body>
+    </html>
+    """
+
+@app.route('/debug_post', methods=['POST'])  
+def debug_post():
+    """Debug endpoint to check POST data"""
+    try:
+        # Log all form data
+        form_data = {key: request.form.get(key) for key in request.form}
+        logging.info(f"Received POST data: {form_data}")
+        
+        # Return a success response
+        return jsonify({
+            "status": "success",
+            "received_data": form_data
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        })
+        
+@app.route('/debug_db')
+def debug_db():
+    """Debug endpoint to check database contents"""
+    try:
+        # Connect to the database
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Get all tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        
+        # Get sample rows from each table
+        samples = {}
+        for table in tables:
+            try:
+                cursor.execute(f"SELECT * FROM {table} LIMIT 5")
+                rows = cursor.fetchall()
+                if rows:
+                    # Convert rows to dictionaries
+                    samples[table] = [dict(row) for row in rows]
+                else:
+                    samples[table] = []
+            except Exception as table_error:
+                samples[table] = f"Error: {str(table_error)}"
+        
+        conn.close()
+        
+        # Generate HTML response
+        output = f"""
+        <html>
+            <head>
+                <title>Database Debug</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                    th {{ background-color: #f2f2f2; }}
+                </style>
+            </head>
+            <body>
+                <h1>Database Debug Information</h1>
+                <p><strong>Database Path:</strong> {DB_PATH}</p>
+                <h2>Tables:</h2>
+                <ul>
+        """
+        
+        for table in tables:
+            row_count = len(samples[table]) if isinstance(samples[table], list) else "Error"
+            output += f"<li>{table} ({row_count} sample rows)</li>\n"
+        
+        output += "</ul>\n"
+        
+        # Show sample data from each table
+        for table in tables:
+            output += f"<h2>Sample data from {table}:</h2>\n"
+            
+            if isinstance(samples[table], list):
+                if samples[table]:
+                    # Get column names from first row
+                    columns = samples[table][0].keys()
+                    
+                    output += "<table>\n<tr>\n"
+                    for col in columns:
+                        output += f"<th>{col}</th>\n"
+                    output += "</tr>\n"
+                    
+                    # Add data rows
+                    for row in samples[table]:
+                        output += "<tr>\n"
+                        for col in columns:
+                            # Limit large values and convert non-strings to strings
+                            value = str(row[col])
+                            if len(value) > 100:
+                                value = value[:100] + "..."
+                            output += f"<td>{value}</td>\n"
+                        output += "</tr>\n"
+                    
+                    output += "</table>\n"
+                else:
+                    output += "<p>No data in this table</p>\n"
+            else:
+                output += f"<p>{samples[table]}</p>\n"
+        
+        output += """
+                <p><a href="/scan">Return to Scan Page</a></p>
+            </body>
+        </html>
+        """
+        
+        return output
+    except Exception as e:
+        return f"""
+        <html>
+            <head><title>Database Error</title></head>
+            <body>
+                <h1>Database Debug Error</h1>
+                <p>An error occurred while accessing the database: {str(e)}</p>
+                <p><pre>{traceback.format_exc()}</pre></p>
+            </body>
+        </html>
+        """
+
+@app.route('/debug_scan/<scan_id>')
+def debug_scan_results(scan_id):
+    scan_results = get_scan_results(scan_id)
+    return jsonify(scan_results)
+    
+@app.route('/debug_scan_test')
+def debug_scan_test():
+    """Run a simplified scan and redirect to results"""
+    try:
+        # Create test lead data
+        test_data = {
+            'name': 'Debug User',
+            'email': 'debug@example.com',
+            'company': 'Debug Company',
+            'phone': '555-1234',
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'client_os': 'Debug OS',
+            'client_browser': 'Debug Browser',
+            'windows_version': '',
+            'target': 'example.com'
+        }
+        
+        # Run simplified scan
+        scan_results = debug_scan(test_data)
+        
+        if scan_results and 'scan_id' in scan_results:
+            # Redirect to direct results page
+            return redirect(f"/results_direct?scan_id={scan_results['scan_id']}")
+        else:
+            return "Scan failed: No valid results returned", 500
+    except Exception as e:
+        return f"Scan failed with error: {str(e)}", 500
+            
+def debug_scan(lead_data):
+    """Debug version of the scan function with more verbose logging"""
+    scan_id = str(uuid.uuid4())
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    logging.info(f"[DEBUG SCAN] Starting scan with ID: {scan_id}")
+    logging.info(f"[DEBUG SCAN] Lead data: {lead_data}")
+    
+    # Create basic scan results structure
+    scan_results = {
+        'scan_id': scan_id,
+        'timestamp': timestamp,
+        'target': lead_data.get('target', ''),
+        'email': lead_data.get('email', ''),
+        'client_info': {
+            'os': lead_data.get('client_os', 'Unknown'),
+            'browser': lead_data.get('client_browser', 'Unknown'),
+            'windows_version': lead_data.get('windows_version', '')
+        },
+        # Add some minimal results for testing
+        'recommendations': [
+            'Keep all software updated with the latest security patches',
+            'Use strong, unique passwords for all accounts',
+            'Enable multi-factor authentication where available'
+        ],
+        'risk_assessment': {
+            'overall_score': 75,
+            'risk_level': 'Medium'
+        }
+    }
+    
+    logging.info(f"[DEBUG SCAN] Created basic scan results structure")
+    
+    # Skip actual scanning functionality for testing
+    
+    # Save the results directly
+    try:
+        logging.info(f"[DEBUG SCAN] Attempting to save scan results to database")
+        saved_id = save_scan_results(scan_results)
+        
+        if saved_id:
+            logging.info(f"[DEBUG SCAN] Successfully saved to database with ID: {saved_id}")
+        else:
+            logging.error(f"[DEBUG SCAN] Database save function returned None or False")
+    except Exception as e:
+        logging.error(f"[DEBUG SCAN] Database save error: {str(e)}")
+        logging.debug(f"[DEBUG SCAN] Exception traceback: {traceback.format_exc()}")
+    
+    logging.info(f"[DEBUG SCAN] Completed, returning results with scan_id: {scan_id}")
+    return scan_results
+               
+@app.route('/debug')
+def debug():
+    """Debug endpoint to check Flask configuration"""
+    debug_info = {
+        "Python Version": sys.version,
+        "Working Directory": os.getcwd(),
+        "Template Folder": app.template_folder,
+        "Templates Exist": os.path.exists(app.template_folder),
+        "Templates Available": os.listdir(app.template_folder) if os.path.exists(app.template_folder) else "N/A",
+        "Environment": app.config['ENV'],
+        "Debug Mode": True,
+        "Database Path": DB_PATH,
+        "Database Connection": "Unknown"
+    }
+    
+    try:
+        # Test database connection
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT sqlite_version()")
+        version = cursor.fetchone()
+        conn.close()
+        debug_info["Database Connection"] = f"Success, SQLite version: {version[0]}"
+    except Exception as e:
+        debug_info["Database Connection"] = f"Failed: {str(e)}"
+    
+    return jsonify(debug_info)
+
+@app.route('/about')
+def about():
+    return render_template('about.html')
+
+@app.route('/contact')
+def contact():
+    return render_template('contact.html')
+
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+
+@app.route('/terms')
+def terms():
+    return render_template('terms.html')
+
+@app.route('/api/healthcheck')
+def healthcheck():
+    return jsonify({
+        "status": "ok",
+        "version": "1.0.0",
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+@app.route('/debug_session')
+def debug_session():
+    """Debug endpoint to verify session functionality"""
+    # Get existing scan_id if any
+    scan_id = session.get('scan_id')
+    
+    # Set a test value in session
+    session['test_value'] = str(datetime.now())
+    
+    return jsonify({
+        "session_working": True,
+        "current_scan_id": scan_id,
+        "test_value_set": session['test_value'],
+        "all_keys": list(session.keys())
+    })
+    
+@app.route('/test_scan')
+def test_scan():
+    """Test scan execution directly"""
+    try:
+        # Create test lead data
+        test_data = {
+            'name': 'Test User',
+            'email': 'test@example.com',
+            'company': 'Test Company',
+            'phone': '555-1234',
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'client_os': 'Test OS',
+            'client_browser': 'Test Browser',
+            'windows_version': 'Test Windows',
+            'target': 'example.com'
+        }
+        
+        # Run scan
+        logging.info("Starting test scan execution...")
+        scan_results = run_consolidated_scan(test_data)
+        
+        # Check if we got a valid result
+        if scan_results and 'scan_id' in scan_results:
+            # Try to save to database
+            try:
+                saved_id = save_scan_results(scan_results)
+                db_status = f"Successfully saved to database with ID: {saved_id}" if saved_id else "Failed to save to database"
+            except Exception as db_error:
+                db_status = f"Database error: {str(db_error)}"
+            
+            # Return success output
+            return f"""
+            <html>
+                <head><title>Test Scan Success</title></head>
+                <body>
+                    <h1>Test Scan Completed Successfully</h1>
+                    <p><strong>Scan ID:</strong> {scan_results['scan_id']}</p>
+                    <p><strong>Database Status:</strong> {db_status}</p>
+                    <p><strong>Available Keys:</strong> {', '.join(list(scan_results.keys()))}</p>
+                    <p><a href="/results_direct?scan_id={scan_results['scan_id']}">View Results</a></p>
+                </body>
+            </html>
+            """
+        else:
+            # Return error output
+            return f"""
+            <html>
+                <head><title>Test Scan Failed</title></head>
+                <body>
+                    <h1>Test Scan Failed</h1>
+                    <p>The scan did not return valid results.</p>
+                    <p><pre>{json.dumps(scan_results, indent=2, default=str) if scan_results else 'None'}</pre></p>
+                </body>
+            </html>
+            """
+    except Exception as e:
+        return f"""
+        <html>
+            <head><title>Test Scan Error</title></head>
+            <body>
+                <h1>Test Scan Error</h1>
+                <p>An error occurred during the test scan: {str(e)}</p>
+                <p><pre>{traceback.format_exc()}</pre></p>
+            </body>
+        </html>
+        """
+
+@app.route('/debug_submit', methods=['POST'])
+def debug_submit():
+    """Debug endpoint to test form submission"""
+    try:
+        test_email = request.form.get('test_email', 'unknown@example.com')
+        
+        return f"""
+        <html>
+            <head>
+                <title>Debug Form Submission</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                </style>
+            </head>
+            <body>
+                <h1>Form Submission Successful</h1>
+                <p>Received test email: {test_email}</p>
+                <p>This confirms that basic form submission is working.</p>
+                <a href="/scan">Return to scan page</a>
+            </body>
+        </html>
+        """
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+@app.route('/admin')
+def admin_dashboard_redirect():
+    return redirect(url_for('admin.dashboard'))
+
+@app.route('/admin', endpoint='main_admin_redirect')
+def admin_main_redirect():
+    """Redirect to admin dashboard"""
+    return redirect(url_for('admin.dashboard'))
+
+@app.errorhandler(500)
+def handle_500(e):
+    app.logger.error(f'500 error: {str(e)}')
+    return render_template('error.html', error=str(e)), 500
+
+@app.errorhandler(404)
+def handle_404(e):
+    app.logger.error(f'404 error: {str(e)}')
+    return render_template('error.html', error="Page not found"), 404
+
+@app.route('/api/create-scanner', methods=['POST'])
+def create_scanner_api():
+    """API endpoint to handle scanner creation form submission"""
+    try:
+        # Get form data
+        client_data = {
+            'business_name': request.form.get('business_name', ''),
+            'business_domain': request.form.get('business_domain', ''),
+            'contact_email': request.form.get('contact_email', ''),
+            'contact_phone': request.form.get('contact_phone', ''),
+            'scanner_name': request.form.get('scanner_name', ''),
+            'subscription': request.form.get('subscription', 'basic'),
+            'primary_color': request.form.get('primary_color', '#FF6900'),
+            'secondary_color': request.form.get('secondary_color', '#808588'),
+            'email_subject': request.form.get('email_subject', 'Your Security Scan Report'),
+            'email_intro': request.form.get('email_intro', '')
+        }
+        
+        # Get default scans
+        default_scans = request.form.getlist('default_scans[]')
+        if default_scans:
+            client_data['default_scans'] = default_scans
+        
+        # Handle file uploads
+        if 'logo' in request.files and request.files['logo'].filename:
+            # Process logo upload
+            pass
+            
+        if 'favicon' in request.files and request.files['favicon'].filename:
+            # Process favicon upload
+            pass
+            
+        # For now, just return success response
+        flash('Scanner created successfully', 'success')
+        return redirect(url_for('admin.dashboard'))
+        
+    except Exception as e:
+        app.logger.error(f"Error creating scanner: {str(e)}")
+        flash(f'Error creating scanner: {str(e)}', 'danger')
+        return redirect(url_for('customize_scanner'))
+
+@app.route('/api/service_inquiry', methods=['POST'])
+def api_service_inquiry():
+    try:
+        # Get data from request
+        service = request.form.get('service')
+        findings = request.form.get('findings')
+        scan_id = request.form.get('scan_id')
+        name = request.form.get('name')
+        email = request.form.get('email')
+        phone = request.form.get('phone', '')
+        message = request.form.get('message', '')
+        
+        logging.info(f"Service inquiry received: {service} from {name} ({email})")
+        
+        # Get scan data for reference
+        scan_data = get_scan_results(scan_id)
+        
+        # Create a lead_data dictionary
+        lead_data = {
+            "name": name,
+            "email": email,
+            "phone": phone,
+            "message": message,
+            "service": service,
+            "findings": findings,
+            "scan_id": scan_id,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        # Save the inquiry to the database
+        try:
+            # Create a new table or use an existing one for service inquiries
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            
+            # Make sure the table exists
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS service_inquiries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scan_id TEXT,
+                    name TEXT,
+                    email TEXT,
+                    phone TEXT,
+                    service TEXT,
+                    findings TEXT,
+                    message TEXT,
+                    timestamp TEXT
+                )
+            ''')
+            
+            # Insert the inquiry
+            cursor.execute('''
+                INSERT INTO service_inquiries 
+                (scan_id, name, email, phone, service, findings, message, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                scan_id, name, email, phone, service, findings, message, lead_data['timestamp']
+            ))
+            
+            conn.commit()
+            conn.close()
+            logging.info(f"Service inquiry saved to database for {name}")
+        except Exception as db_error:
+            logging.error(f"Error saving service inquiry to database: {db_error}")
+        
+        # Send an email notification about the service inquiry
+        try:
+            # Customize the email_handler.py function to send service inquiries
+            # or use the existing one with modified parameters
+            email_subject = f"Service Inquiry: {service}"
+            
+            email_body = f"""
+            <h2>New Service Inquiry from Security Scan</h2>
+            <p><strong>Service:</strong> {service}</p>
+            <p><strong>Issues Found:</strong> {findings}</p>
+            <p><strong>Name:</strong> {name}</p>
+            <p><strong>Email:</strong> {email}</p>
+            <p><strong>Phone:</strong> {phone}</p>
+            <p><strong>Message:</strong> {message}</p>
+            <p><strong>Scan ID:</strong> {scan_id}</p>
+            <p><strong>Timestamp:</strong> {lead_data['timestamp']}</p>
+            """
+            
+            # Use your existing email sending function
+            # send_email_notification(admin_email, email_subject, email_body)
+            logging.info(f"Service inquiry email notification sent for {service}")
+        except Exception as email_error:
+            logging.error(f"Error sending service inquiry email: {email_error}")
+        
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logging.error(f"Error processing service inquiry: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+def check_route_conflicts():
+    """Check for conflicting routes in registered blueprints"""
+    routes = {}
+    for rule in app.url_map.iter_rules():
+        endpoint = rule.endpoint
+        path = str(rule)
+        if path in routes:
+            logging.warning(f"Route conflict found: {path} is registered by both {routes[path]} and {endpoint}")
+        else:
+            routes[path] = endpoint
+            
+    # Print all routes for debugging
+    logging.info("All registered routes:")
+    for path, endpoint in sorted(routes.items()):
+        logging.info(f"  {path} -> {endpoint}")
+        
+# Call this function after all blueprints are registered
+try:
+    check_route_conflicts()
+except Exception as route_check_error:
+    logging.error(f"Error checking route conflicts: {route_check_error}")
+
+@app.route('/run_dashboard_fix')
+def run_dashboard_fix():
+    """Web route to run the dashboard fix script"""
+    try:
+        # Import functions from dashboard_fix.py
+        from dashboard_fix import apply_dashboard_fix, add_get_dashboard_summary, fix_list_clients, create_missing_tables
+        
+        # Define file paths
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        admin_py = os.path.join(script_dir, 'admin.py')
+        client_db_py = os.path.join(script_dir, 'client_db.py')
+        
+        # Apply fixes
+        results = []
+        results.append(f"Starting dashboard fixes at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Fix admin.py dashboard function
+        if os.path.exists(admin_py):
+            dashboard_fix_result = apply_dashboard_fix(admin_py)
+            results.append(f"Dashboard function fix: {'Success' if dashboard_fix_result else 'Failed'}")
+        else:
+            results.append(f"Error: admin.py not found at {admin_py}")
+            
+        # Fix client_db.py functions
+        if os.path.exists(client_db_py):
+            # Add or update get_dashboard_summary function
+            summary_fix_result = add_get_dashboard_summary(client_db_py)
+            results.append(f"get_dashboard_summary function fix: {'Success' if summary_fix_result else 'Failed'}")
+            
+            # Fix list_clients function
+            clients_fix_result = fix_list_clients(client_db_py)
+            results.append(f"list_clients function fix: {'Success' if clients_fix_result else 'Failed'}")
+        else:
+            results.append(f"Error: client_db.py not found at {client_db_py}")
+            
+        # Create missing tables
+        tables_fix_result = create_missing_tables()
+        results.append(f"Missing tables creation: {'Success' if tables_fix_result else 'Failed'}")
+        
+        # Create HTML output without using problematic f-strings with backslashes
+        result_text = "<br>".join(results)
+        html = f"""
+        <html>
+            <head>
+                <title>Dashboard Fix Results</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .success {{ color: green; }}
+                    .error {{ color: red; }}
+                    .container {{ max-width: 800px; margin: 0 auto; }}
+                    pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Dashboard Fix Results</h1>
+                    <div style="background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto;">
+                        {result_text}
+                    </div>
+                    <p><a href="/admin/dashboard">Try accessing the dashboard</a></p>
+                </div>
+            </body>
+        </html>
+        """
+        return html
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        html = f"""
+        <html>
+            <head>
+                <title>Dashboard Fix Error</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .error {{ color: red; }}
+                    .container {{ max-width: 800px; margin: 0 auto; }}
+                    pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1 class="error">Error Running Dashboard Fix</h1>
+                    <p class="error">{str(e)}</p>
+                    <h2>Traceback:</h2>
+                    <pre>{error_traceback}</pre>
+                </div>
+            </body>
+        </html>
+        """
+        return html
+
+@app.route('/run_emergency_admin')
+def run_emergency_admin():
+    """Web route to create an emergency admin user"""
+    try:
+        # Import function from hotfix.py
+        from hotfix import create_emergency_admin
+        
+        # Create emergency admin
+        success = create_emergency_admin()
+        
+        # Get admin details if successful
+        if success:
+            admin_details = """
+            <div style="color: green; padding: 10px; background-color: #e6ffe6; border-radius: 5px;">
+                <p>Emergency admin created successfully!</p>
+                <p>Username: emergency_admin</p>
+                <p>Password: admin123</p>
+            </div>
+            <p><a href="/admin/dashboard">Go to Admin Dashboard</a></p>
+            """
+        else:
+            admin_details = """
+            <div style="color: red; padding: 10px; background-color: #ffe6e6; border-radius: 5px;">
+                <p>Failed to create emergency admin.</p>
+            </div>
+            """
+        
+        # Return the results
+        html = f"""
+        <html>
+            <head>
+                <title>Emergency Admin Creation</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .container {{ max-width: 800px; margin: 0 auto; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Emergency Admin Creation</h1>
+                    {admin_details}
+                </div>
+            </body>
+        </html>
+        """
+        return html
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        html = f"""
+        <html>
+            <head>
+                <title>Emergency Admin Error</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .error {{ color: red; }}
+                    .container {{ max-width: 800px; margin: 0 auto; }}
+                    pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1 class="error">Error Creating Emergency Admin</h1>
+                    <p class="error">{str(e)}</p>
+                    <h2>Traceback:</h2>
+                    <pre>{error_traceback}</pre>
+                </div>
+            </body>
+        </html>
+        """
+        return html
+
+def apply_route_fixes():
+    """Apply all route fixes"""
+    try:
+        # Get the Flask app
+        # Apply auth routes fix
+        try:
+            from auth_fix import fix_auth_routes
+            auth_fixed = fix_auth_routes(app)
+        except ImportError:
+            logging.warning("auth_fix module not found")
+            auth_fixed = False
+        
+        # Apply admin routes fix
+        try:
+            from route_fix import fix_admin_routes
+            admin_fixed = fix_admin_routes(app)
+        except ImportError:
+            logging.warning("route_fix module not found")
+            admin_fixed = False
+        
+        # Report results
+        if auth_fixed and admin_fixed:
+            logging.info("All route fixes applied successfully!")
+            return True
+        else:
+            logging.warning("Some route fixes could not be applied.")
+            return False
+    except Exception as e:
+        logging.error(f"Error applying route fixes: {e}")
+        return False
+
+# Helper function to get client ID from request
+def get_client_id_from_request():
+    """Get client ID from API key or other authentication"""
+    # This would normally check API key, JWT token, or session
+    # For now, return a default value
+    try:
+        return request.headers.get('X-Client-ID') or request.args.get('client_id') or 1
+    except:
+        return 1
+
+    
+    # Get port from environment variable or use default
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Run the direct database fix
+    try:
+        direct_db_fix()
+    except Exception as db_fix_error:
+        logging.error(f"Database fix error: {db_fix_error}")
+    
+    # Apply route fixes if needed
+    try:
+        apply_route_fixes()
+    except Exception as route_fix_error:
+        logging.error(f"Route fix error: {route_fix_error}")
+    
+    # Use 0.0.0.0 to make the app accessible from any IP
+    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')    import uuid
     import json
     from datetime import datetime
     
@@ -1014,12 +2059,10 @@ def create_client_direct(conn, cursor, client_data, user_id):
     }
     
 # Add a route for the admin dashboard
-#@app.route('/admin/dashboard', methods=['GET'])
-#def admin_dashboard():
-    #"""Render the admin dashboard"""
-    #return render_template('admin/admin-dashboard.html')
-
-
+@app.route('/admin/dashboard', methods=['GET'])
+def admin_dashboard():
+    """Render the admin dashboard"""
+    return render_template('admin/admin-dashboard.html')
 
 # Log registered routes
 @app.before_first_request
@@ -2421,1133 +3464,41 @@ def results():
                         network_type = gateway_info.split("Network Type:")[1].split("|")[0].strip()
                         logging.debug(f"Extracted network type: {network_type}")
                     except:
-                        logging.warning("Failed to extract network type from gateway info")
-                
-                # Try to extract gateway guesses
-                if "Likely gateways:" in gateway_info:
-                    try:
-                        gateways_part = gateway_info.split("Likely gateways:")[1].strip()
-                        if "|" in gateways_part:
-                            gateways_part = gateways_part.split("|")[0].strip()
-                        gateway_guesses = [g.strip() for g in gateways_part.split(",")]
-                        logging.debug(f"Extracted gateway guesses: {gateway_guesses}")
-                    except:
-                        logging.warning("Failed to extract gateway guesses from gateway info")
-
-        # Add additional logging for troubleshooting
-        logging.info(f"Rendering results template with scan_id: {scan_id}")
-        logging.info(f"Template variables: client_ip={client_ip}, network_type={network_type}, gateway_guesses={len(gateway_guesses)}")
-        
-        # Now render template with all required data
-        return render_template('results.html', 
-                               scan=scan_results,
-                               client_ip=client_ip,
-                               gateway_guesses=gateway_guesses,
-                               network_type=network_type,
-                               gateway_info=gateway_info)
-
-    except Exception as e:
-        logging.error(f"Error loading scan results: {e}")
-        logging.debug(f"Exception traceback: {traceback.format_exc()}")
-        return render_template('error.html', error=f"Error loading scan results: {str(e)}")
-        
-@app.route('/api/email_report', methods=['POST'])
-def api_email_report():
+                        logging
+def log_system_info():
+    """Log details about the system environment"""
+    logger = logging.getLogger(__name__)
+    
+    logger.info("----- System Information -----")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Platform: {platform.platform()}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    logger.info(f"Database path: {DB_PATH}")
+    
+    # Test database connection
     try:
-        # Get data from request
-        scan_id = request.form.get('scan_id')
-        email = request.form.get('email')
-        
-        logging.info(f"Email report requested for scan_id: {scan_id} to email: {email}")
-        
-        if not scan_id or not email:
-            logging.error("Missing required parameters (scan_id or email)")
-            return jsonify({"status": "error", "message": "Missing required parameters"})
-        
-        # Get scan data from database 
-        scan_data = get_scan_results(scan_id)
-        
-        if not scan_data:
-            logging.error(f"Scan data not found for ID: {scan_id}")
-            return jsonify({"status": "error", "message": "Scan data not found"})
-        
-        # Create a lead_data dictionary for the email function
-        lead_data = {
-            "email": email,
-            "name": scan_data.get('client_info', {}).get('name', ''),
-            "company": scan_data.get('client_info', {}).get('company', ''),
-            "phone": scan_data.get('client_info', {}).get('phone', ''),
-            "timestamp": scan_data.get('timestamp', '')
-        }
-        
-        # Use the complete HTML that was stored during scan
-        if 'complete_html_report' in scan_data and scan_data['complete_html_report']:
-            html_report = scan_data['complete_html_report']
-            logging.info("Using stored complete HTML report")
-        else:
-            # Fallback to either stored 'html_report' or re-render
-            html_report = scan_data.get('html_report', '')
-            
-            # If neither complete nor basic HTML report is available, try to re-render
-            if not html_report:
-                try:
-                    logging.warning("Complete HTML report not found, attempting to re-render")
-                    html_report = render_template('results.html', scan=scan_data)
-                except Exception as render_error:
-                    logging.error(f"Error rendering HTML report: {render_error}")
-        
-        # Send email using the updated function
-        logging.info(f"Attempting to send email report to {email}")
-        email_sent = send_email_report(lead_data, scan_data, html_report)
-        
-        if email_sent:
-            logging.info(f"Email report successfully sent to {email}")
-            return jsonify({"status": "success"})
-        else:
-            logging.error(f"Failed to send email report to {email}")
-            return jsonify({"status": "error", "message": "Failed to send email"})
-            
-    except Exception as e:
-        logging.error(f"Error in email report API: {e}")
-        logging.debug(traceback.format_exc())
-        return jsonify({"status": "error", "message": str(e)})
-
-@app.route('/simple_scan')
-def simple_scan():
-    """A completely simplified scan that bypasses all complexity"""
-    try:
-        # Create a simple scan result
-        scan_id = str(uuid.uuid4())
-        timestamp = datetime.now().isoformat()
-        
-        # Return results directly without database or sessions
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Simple Scan Results</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                .section {{ padding: 15px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; }}
-            </style>
-        </head>
-        <body>
-            <h1>Simple Scan Results</h1>
-            
-            <div class="section">
-                <h2>Scan Information</h2>
-                <p><strong>Scan ID:</strong> {scan_id}</p>
-                <p><strong>Timestamp:</strong> {timestamp}</p>
-            </div>
-            
-            <div class="section">
-                <h2>Sample Results</h2>
-                <p>This is a simple test page that bypasses all complex functionality.</p>
-                <ul>
-                    <li>Keep all software updated with security patches</li>
-                    <li>Use strong, unique passwords</li>
-                    <li>Enable multi-factor authentication where possible</li>
-                </ul>
-            </div>
-            
-            <a href="/scan">Run a real scan</a>
-        </body>
-        </html>
-        """
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@app.route('/db_check')
-def db_check():
-    """Check if the database is set up and working properly"""
-    try:
-        # Try to connect to the database
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Check if tables exist
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = cursor.fetchall()
-        
-        # Get count of records in each table
-        table_counts = {}
-        for table in tables:
-            table_name = table[0]
-            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-            count = cursor.fetchone()[0]
-            table_counts[table_name] = count
-        
-        conn.close()
-        
-        return jsonify({
-            "status": "success",
-            "database_path": DB_PATH,
-            "tables": [table[0] for table in tables],
-            "record_counts": table_counts,
-            "timestamp": datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e),
-            "trace": traceback.format_exc()
-        })
-
-@app.route('/test_db_write')
-def test_db_write():
-    """Test direct database write functionality"""
-    try:
-        # Create test data
-        test_data = {
-            'scan_id': str(uuid.uuid4()),
-            'timestamp': datetime.now().isoformat(),
-            'target': 'test.com',
-            'email': 'test@example.com',
-            'test_field': 'This is a test'
-        }
-        
-        # Try to save to database
-        saved_id = save_scan_results(test_data)
-        
-        if saved_id:
-            # Try to retrieve it
-            retrieved = get_scan_results(saved_id)
-            
-            return jsonify({
-                'status': 'success',
-                'message': 'Database write and read successful',
-                'saved_id': saved_id,
-                'retrieved': retrieved is not None,
-                'record_matches': retrieved is not None and retrieved.get('test_field') == test_data['test_field']
-            })
-        else:
-            return jsonify({
-                'status': 'error',
-                'message': 'Database write failed - save_scan_results returned None or False'
-            })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': f'Exception during database test: {str(e)}',
-            'traceback': traceback.format_exc()
-        })
-
-@app.route('/clear_session')
-def clear_session():
-    """Clear the current session to start fresh"""
-    # Clear existing session data
-    session.clear()
-    logging.info("Session cleared")
-    
-    return jsonify({
-        "status": "success",
-        "message": "Session cleared successfully. You can now run a new scan.",
-        "redirect": url_for('scan_page')
-    })
-
-@app.route('/api/scan', methods=['POST'])
-@limiter.limit("5 per minute")
-def api_scan():
-    """API endpoint for scan requests"""
-    try:
-        # Get client info from authentication
-        client_id = get_client_id_from_request()
-        scanner_id = request.form.get('scanner_id')
-        
-        # Run the scan
-        scan_results = run_consolidated_scan(request.form)
-        
-        # Save to client's database
-        with get_client_db(db_manager, client_id) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO scans (
-                    scanner_id, scan_timestamp, target, 
-                    scan_type, status, results, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                scanner_id,
-                datetime.now().isoformat(),
-                scan_results['target'],
-                scan_results['type'],
-                'completed',
-                json.dumps(scan_results['results']),
-                datetime.now().isoformat()
-            ))
-            conn.commit()
-            
-        return jsonify({
-            "status": "success",
-            "scan_id": scan_results['scan_id'],
-            "message": "Scan completed successfully."
-        })
-            
-    except Exception as e:
-        logging.error(f"Error in API scan: {e}")
-        return jsonify({
-            "status": "error",
-            "message": f"An error occurred during the scan: {str(e)}"
-        }), 500
-        
-@app.route('/results_direct')
-def results_direct():
-    """Display scan results directly from query parameter"""
-    scan_id = request.args.get('scan_id')
-    
-    if not scan_id:
-        return "No scan ID provided", 400
-    
-    try:
-        # Get results from database
-        scan_results = get_scan_results(scan_id)
-        
-        if not scan_results:
-            return f"No results found for scan ID: {scan_id}", 404
-        
-        # Return a simplified view of the results
-        return f"""
-        <html>
-            <head>
-                <title>Scan Results</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    .section {{ margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }}
-                </style>
-            </head>
-            <body>
-                <h1>Scan Results</h1>
-                
-                <div class="section">
-                    <h2>Scan Information</h2>
-                    <p><strong>Scan ID:</strong> {scan_results['scan_id']}</p>
-                    <p><strong>Timestamp:</strong> {scan_results['timestamp']}</p>
-                    <p><strong>Email:</strong> {scan_results['email']}</p>
-                </div>
-                
-                <div class="section">
-                    <h2>Risk Assessment</h2>
-                    <p><strong>Overall Score:</strong> {scan_results['risk_assessment']['overall_score']}</p>
-                    <p><strong>Risk Level:</strong> {scan_results['risk_assessment']['risk_level']}</p>
-                </div>
-                
-                <div class="section">
-                    <h2>Recommendations</h2>
-                    <ul>
-                        {''.join([f'<li>{r}</li>' for r in scan_results['recommendations']])}
-                    </ul>
-                </div>
-                
-                <a href="/scan">Run another scan</a>
-            </body>
-        </html>
-        """
-    except Exception as e:
-        return f"Error loading results: {str(e)}", 500
-    
-@app.route('/quick_scan', methods=['GET', 'POST'])
-def quick_scan():
-    if request.method == 'POST':
-        try:
-            email = request.form.get('email', '')
-            
-            if not email:
-                return "Email is required", 400
-            
-            # Extract domain from email
-            domain = extract_domain_from_email(email)
-            
-            # Create minimal test data
-            test_data = {
-                'name': 'Test User',
-                'email': email,
-                'company': 'Test Company',
-                'phone': '555-1234',
-                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'client_os': 'Test OS',
-                'client_browser': 'Test Browser',
-                'windows_version': '',
-                'target': domain  # Use extracted domain
-            }
-            
-            logging.info(f"Starting quick scan for {email}...")
-            scan_results = run_consolidated_scan(test_data)
-            
-            if not scan_results or 'scan_id' not in scan_results:
-                return "Scan failed to complete", 500
-            
-            # Save to database
-            saved_id = save_scan_results(scan_results)
-            if not saved_id:
-                return "Failed to save scan results", 500
-            
-            # Redirect to results
-            return redirect(url_for('results_direct', scan_id=scan_results['scan_id']))
-        except Exception as e:
-            logging.error(f"Error in quick_scan: {e}")
-            return f"Error: {str(e)}", 500
-    
-    # Simple form for GET requests
-    return """
-    <html>
-        <head><title>Quick Scan Test</title></head>
-        <body>
-            <h1>Quick Scan Test</h1>
-            <form method="post">
-                <div>
-                    <label>Email: <input type="email" name="email" required></label>
-                </div>
-                <div>
-                    <label>Target (optional): <input type="text" name="target"></label>
-                </div>
-                <button type="submit">Run Quick Scan</button>
-            </form>
-        </body>
-    </html>
-    """
-
-@app.route('/debug_post', methods=['POST'])  
-def debug_post():
-    """Debug endpoint to check POST data"""
-    try:
-        # Log all form data
-        form_data = {key: request.form.get(key) for key in request.form}
-        logging.info(f"Received POST data: {form_data}")
-        
-        # Return a success response
-        return jsonify({
-            "status": "success",
-            "received_data": form_data
-        })
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e)
-        })
-        
-@app.route('/debug_db')
-def debug_db():
-    """Debug endpoint to check database contents"""
-    try:
-        # Connect to the database
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # Get all tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-        
-        # Get sample rows from each table
-        samples = {}
-        for table in tables:
-            try:
-                cursor.execute(f"SELECT * FROM {table} LIMIT 5")
-                rows = cursor.fetchall()
-                if rows:
-                    # Convert rows to dictionaries
-                    samples[table] = [dict(row) for row in rows]
-                else:
-                    samples[table] = []
-            except Exception as table_error:
-                samples[table] = f"Error: {str(table_error)}"
-        
-        conn.close()
-        
-        # Generate HTML response
-        output = f"""
-        <html>
-            <head>
-                <title>Database Debug</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    table {{ border-collapse: collapse; width: 100%; }}
-                    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                    th {{ background-color: #f2f2f2; }}
-                </style>
-            </head>
-            <body>
-                <h1>Database Debug Information</h1>
-                <p><strong>Database Path:</strong> {DB_PATH}</p>
-                <h2>Tables:</h2>
-                <ul>
-        """
-        
-        for table in tables:
-            row_count = len(samples[table]) if isinstance(samples[table], list) else "Error"
-            output += f"<li>{table} ({row_count} sample rows)</li>\n"
-        
-        output += "</ul>\n"
-        
-        # Show sample data from each table
-        for table in tables:
-            output += f"<h2>Sample data from {table}:</h2>\n"
-            
-            if isinstance(samples[table], list):
-                if samples[table]:
-                    # Get column names from first row
-                    columns = samples[table][0].keys()
-                    
-                    output += "<table>\n<tr>\n"
-                    for col in columns:
-                        output += f"<th>{col}</th>\n"
-                    output += "</tr>\n"
-                    
-                    # Add data rows
-                    for row in samples[table]:
-                        output += "<tr>\n"
-                        for col in columns:
-                            # Limit large values and convert non-strings to strings
-                            value = str(row[col])
-                            if len(value) > 100:
-                                value = value[:100] + "..."
-                            output += f"<td>{value}</td>\n"
-                        output += "</tr>\n"
-                    
-                    output += "</table>\n"
-                else:
-                    output += "<p>No data in this table</p>\n"
-            else:
-                output += f"<p>{samples[table]}</p>\n"
-        
-        output += """
-                <p><a href="/scan">Return to Scan Page</a></p>
-            </body>
-        </html>
-        """
-        
-        return output
-    except Exception as e:
-        return f"""
-        <html>
-            <head><title>Database Error</title></head>
-            <body>
-                <h1>Database Debug Error</h1>
-                <p>An error occurred while accessing the database: {str(e)}</p>
-                <p><pre>{traceback.format_exc()}</pre></p>
-            </body>
-        </html>
-        """
-
-@app.route('/debug_scan/<scan_id>')
-def debug_scan_results(scan_id):
-    scan_results = get_scan_results(scan_id)
-    return jsonify(scan_results)
-    
-@app.route('/debug_scan_test')
-def debug_scan_test():
-    """Run a simplified scan and redirect to results"""
-    try:
-        # Create test lead data
-        test_data = {
-            'name': 'Debug User',
-            'email': 'debug@example.com',
-            'company': 'Debug Company',
-            'phone': '555-1234',
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'client_os': 'Debug OS',
-            'client_browser': 'Debug Browser',
-            'windows_version': '',
-            'target': 'example.com'
-        }
-        
-        # Run simplified scan
-        scan_results = debug_scan(test_data)
-        
-        if scan_results and 'scan_id' in scan_results:
-            # Redirect to direct results page
-            return redirect(f"/results_direct?scan_id={scan_results['scan_id']}")
-        else:
-            return "Scan failed: No valid results returned", 500
-    except Exception as e:
-        return f"Scan failed with error: {str(e)}", 500
-            
-def debug_scan(lead_data):
-    """Debug version of the scan function with more verbose logging"""
-    scan_id = str(uuid.uuid4())
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    logging.info(f"[DEBUG SCAN] Starting scan with ID: {scan_id}")
-    logging.info(f"[DEBUG SCAN] Lead data: {lead_data}")
-    
-    # Create basic scan results structure
-    scan_results = {
-        'scan_id': scan_id,
-        'timestamp': timestamp,
-        'target': lead_data.get('target', ''),
-        'email': lead_data.get('email', ''),
-        'client_info': {
-            'os': lead_data.get('client_os', 'Unknown'),
-            'browser': lead_data.get('client_browser', 'Unknown'),
-            'windows_version': lead_data.get('windows_version', '')
-        },
-        # Add some minimal results for testing
-        'recommendations': [
-            'Keep all software updated with the latest security patches',
-            'Use strong, unique passwords for all accounts',
-            'Enable multi-factor authentication where available'
-        ],
-        'risk_assessment': {
-            'overall_score': 75,
-            'risk_level': 'Medium'
-        }
-    }
-    
-    logging.info(f"[DEBUG SCAN] Created basic scan results structure")
-    
-    # Skip actual scanning functionality for testing
-    
-    # Save the results directly
-    try:
-        logging.info(f"[DEBUG SCAN] Attempting to save scan results to database")
-        saved_id = save_scan_results(scan_results)
-        
-        if saved_id:
-            logging.info(f"[DEBUG SCAN] Successfully saved to database with ID: {saved_id}")
-        else:
-            logging.error(f"[DEBUG SCAN] Database save function returned None or False")
-    except Exception as e:
-        logging.error(f"[DEBUG SCAN] Database save error: {str(e)}")
-        logging.debug(f"[DEBUG SCAN] Exception traceback: {traceback.format_exc()}")
-    
-    logging.info(f"[DEBUG SCAN] Completed, returning results with scan_id: {scan_id}")
-    return scan_results
-               
-@app.route('/debug')
-def debug():
-    """Debug endpoint to check Flask configuration"""
-    debug_info = {
-        "Python Version": sys.version,
-        "Working Directory": os.getcwd(),
-        "Template Folder": app.template_folder,
-        "Templates Exist": os.path.exists(app.template_folder),
-        "Templates Available": os.listdir(app.template_folder) if os.path.exists(app.template_folder) else "N/A",
-        "Environment": app.config['ENV'],
-        "Debug Mode": True,
-        "Database Path": DB_PATH,
-        "Database Connection": "Unknown"
-    }
-    
-    try:
-        # Test database connection
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("SELECT sqlite_version()")
         version = cursor.fetchone()
+        logger.info(f"SQLite version: {version[0]}")
         conn.close()
-        debug_info["Database Connection"] = f"Success, SQLite version: {version[0]}"
+        logger.info("Database connection successful")
     except Exception as e:
-        debug_info["Database Connection"] = f"Failed: {str(e)}"
+        logger.warning(f"Database connection failed: {e}")
     
-    return jsonify(debug_info)
+    logger.info("-----------------------------")
 
-@app.route('/about')
-def about():
-    return render_template('about.html')
-
-@app.route('/contact')
-def contact():
-    return render_template('contact.html')
-
-@app.route('/privacy')
-def privacy():
-    return render_template('privacy.html')
-
-@app.route('/terms')
-def terms():
-    return render_template('terms.html')
-
-@app.route('/api/healthcheck')
-def healthcheck():
-    return jsonify({
-        "status": "ok",
-        "version": "1.0.0",
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
-
-@app.route('/debug_session')
-def debug_session():
-    """Debug endpoint to verify session functionality"""
-    # Get existing scan_id if any
-    scan_id = session.get('scan_id')
-    
-    # Set a test value in session
-    session['test_value'] = str(datetime.now())
-    
-    return jsonify({
-        "session_working": True,
-        "current_scan_id": scan_id,
-        "test_value_set": session['test_value'],
-        "all_keys": list(session.keys())
-    })
-    
-@app.route('/test_scan')
-def test_scan():
-    """Test scan execution directly"""
-    try:
-        # Create test lead data
-        test_data = {
-            'name': 'Test User',
-            'email': 'test@example.com',
-            'company': 'Test Company',
-            'phone': '555-1234',
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'client_os': 'Test OS',
-            'client_browser': 'Test Browser',
-            'windows_version': 'Test Windows',
-            'target': 'example.com'
-        }
-        
-        # Run scan
-        logging.info("Starting test scan execution...")
-        scan_results = run_consolidated_scan(test_data)
-        
-        # Check if we got a valid result
-        if scan_results and 'scan_id' in scan_results:
-            # Try to save to database
-            try:
-                saved_id = save_scan_results(scan_results)
-                db_status = f"Successfully saved to database with ID: {saved_id}" if saved_id else "Failed to save to database"
-            except Exception as db_error:
-                db_status = f"Database error: {str(db_error)}"
-            
-            # Return success output
-            return f"""
-            <html>
-                <head><title>Test Scan Success</title></head>
-                <body>
-                    <h1>Test Scan Completed Successfully</h1>
-                    <p><strong>Scan ID:</strong> {scan_results['scan_id']}</p>
-                    <p><strong>Database Status:</strong> {db_status}</p>
-                    <p><strong>Available Keys:</strong> {', '.join(list(scan_results.keys()))}</p>
-                    <p><a href="/results_direct?scan_id={scan_results['scan_id']}">View Results</a></p>
-                </body>
-            </html>
-            """
-        else:
-            # Return error output
-            return f"""
-            <html>
-                <head><title>Test Scan Failed</title></head>
-                <body>
-                    <h1>Test Scan Failed</h1>
-                    <p>The scan did not return valid results.</p>
-                    <p><pre>{json.dumps(scan_results, indent=2, default=str) if scan_results else 'None'}</pre></p>
-                </body>
-            </html>
-            """
-    except Exception as e:
-        return f"""
-        <html>
-            <head><title>Test Scan Error</title></head>
-            <body>
-                <h1>Test Scan Error</h1>
-                <p>An error occurred during the test scan: {str(e)}</p>
-                <p><pre>{traceback.format_exc()}</pre></p>
-            </body>
-        </html>
-        """
-
-@app.route('/debug_submit', methods=['POST'])
-def debug_submit():
-    """Debug endpoint to test form submission"""
-    try:
-        test_email = request.form.get('test_email', 'unknown@example.com')
-        
-        return f"""
-        <html>
-            <head>
-                <title>Debug Form Submission</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                </style>
-            </head>
-            <body>
-                <h1>Form Submission Successful</h1>
-                <p>Received test email: {test_email}</p>
-                <p>This confirms that basic form submission is working.</p>
-                <a href="/scan">Return to scan page</a>
-            </body>
-        </html>
-        """
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@app.route('/admin')
-def admin_dashboard_redirect():
-    return redirect(url_for('admin.dashboard'))
-
-@app.route('/admin', endpoint='main_admin_redirect')
-def admin_main_redirect():
-    """Redirect to admin dashboard"""
-    return redirect(url_for('admin.dashboard'))
-
-@app.errorhandler(500)
-def handle_500(e):
-    app.logger.error(f'500 error: {str(e)}')
-    return render_template('error.html', error=str(e)), 500
-
-@app.errorhandler(404)
-def handle_404(e):
-    app.logger.error(f'404 error: {str(e)}')
-    return render_template('error.html', error="Page not found"), 404
-
-@app.route('/api/create-scanner', methods=['POST'])
-def create_scanner_api():
-    """API endpoint to handle scanner creation form submission"""
-    try:
-        # Get form data
-        client_data = {
-            'business_name': request.form.get('business_name', ''),
-            'business_domain': request.form.get('business_domain', ''),
-            'contact_email': request.form.get('contact_email', ''),
-            'contact_phone': request.form.get('contact_phone', ''),
-            'scanner_name': request.form.get('scanner_name', ''),
-            'subscription': request.form.get('subscription', 'basic'),
-            'primary_color': request.form.get('primary_color', '#FF6900'),
-            'secondary_color': request.form.get('secondary_color', '#808588'),
-            'email_subject': request.form.get('email_subject', 'Your Security Scan Report'),
-            'email_intro': request.form.get('email_intro', '')
-        }
-        
-        # Get default scans
-        default_scans = request.form.getlist('default_scans[]')
-        if default_scans:
-            client_data['default_scans'] = default_scans
-        
-        # Handle file uploads
-        if 'logo' in request.files and request.files['logo'].filename:
-            # Process logo upload
-            pass
-            
-        if 'favicon' in request.files and request.files['favicon'].filename:
-            # Process favicon upload
-            pass
-            
-        # For now, just return success response
-        flash('Scanner created successfully', 'success')
-        return redirect(url_for('admin.dashboard'))
-        
-    except Exception as e:
-        app.logger.error(f"Error creating scanner: {str(e)}")
-        flash(f'Error creating scanner: {str(e)}', 'danger')
-        return redirect(url_for('customize_scanner'))
-
-@app.route('/api/service_inquiry', methods=['POST'])
-def api_service_inquiry():
-    try:
-        # Get data from request
-        service = request.form.get('service')
-        findings = request.form.get('findings')
-        scan_id = request.form.get('scan_id')
-        name = request.form.get('name')
-        email = request.form.get('email')
-        phone = request.form.get('phone', '')
-        message = request.form.get('message', '')
-        
-        logging.info(f"Service inquiry received: {service} from {name} ({email})")
-        
-        # Get scan data for reference
-        scan_data = get_scan_results(scan_id)
-        
-        # Create a lead_data dictionary
-        lead_data = {
-            "name": name,
-            "email": email,
-            "phone": phone,
-            "message": message,
-            "service": service,
-            "findings": findings,
-            "scan_id": scan_id,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        # Save the inquiry to the database
-        try:
-            # Create a new table or use an existing one for service inquiries
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            # Make sure the table exists
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS service_inquiries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scan_id TEXT,
-                    name TEXT,
-                    email TEXT,
-                    phone TEXT,
-                    service TEXT,
-                    findings TEXT,
-                    message TEXT,
-                    timestamp TEXT
-                )
-            ''')
-            
-            # Insert the inquiry
-            cursor.execute('''
-                INSERT INTO service_inquiries 
-                (scan_id, name, email, phone, service, findings, message, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                scan_id, name, email, phone, service, findings, message, lead_data['timestamp']
-            ))
-            
-            conn.commit()
-            conn.close()
-            logging.info(f"Service inquiry saved to database for {name}")
-        except Exception as db_error:
-            logging.error(f"Error saving service inquiry to database: {db_error}")
-        
-        # Send an email notification about the service inquiry
-        try:
-            # Customize the email_handler.py function to send service inquiries
-            # or use the existing one with modified parameters
-            email_subject = f"Service Inquiry: {service}"
-            
-            email_body = f"""
-            <h2>New Service Inquiry from Security Scan</h2>
-            <p><strong>Service:</strong> {service}</p>
-            <p><strong>Issues Found:</strong> {findings}</p>
-            <p><strong>Name:</strong> {name}</p>
-            <p><strong>Email:</strong> {email}</p>
-            <p><strong>Phone:</strong> {phone}</p>
-            <p><strong>Message:</strong> {message}</p>
-            <p><strong>Scan ID:</strong> {scan_id}</p>
-            <p><strong>Timestamp:</strong> {lead_data['timestamp']}</p>
-            """
-            
-            # Use your existing email sending function
-            # send_email_notification(admin_email, email_subject, email_body)
-            logging.info(f"Service inquiry email notification sent for {service}")
-        except Exception as email_error:
-            logging.error(f"Error sending service inquiry email: {email_error}")
-        
-        return jsonify({"status": "success"})
-    except Exception as e:
-        logging.error(f"Error processing service inquiry: {e}")
-        return jsonify({"status": "error", "message": str(e)})
-
-def check_route_conflicts():
-    """Check for conflicting routes in registered blueprints"""
-    routes = {}
-    for rule in app.url_map.iter_rules():
-        endpoint = rule.endpoint
-        path = str(rule)
-        if path in routes:
-            logging.warning(f"Route conflict found: {path} is registered by both {routes[path]} and {endpoint}")
-        else:
-            routes[path] = endpoint
-            
-    # Print all routes for debugging
-    logging.info("All registered routes:")
-    for path, endpoint in sorted(routes.items()):
-        logging.info(f"  {path} -> {endpoint}")
-        
-# Call this function after all blueprints are registered
-check_route_conflicts()
-
-@app.route('/run_dashboard_fix')
-def run_dashboard_fix():
-    """Web route to run the dashboard fix script"""
-    try:
-        # Import functions from dashboard_fix.py
-        from dashboard_fix import apply_dashboard_fix, add_get_dashboard_summary, fix_list_clients, create_missing_tables
-        
-        # Define file paths
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        admin_py = os.path.join(script_dir, 'admin.py')
-        client_db_py = os.path.join(script_dir, 'client_db.py')
-        
-        # Apply fixes
-        results = []
-        results.append(f"Starting dashboard fixes at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        # Fix admin.py dashboard function
-        if os.path.exists(admin_py):
-            dashboard_fix_result = apply_dashboard_fix(admin_py)
-            results.append(f"Dashboard function fix: {'Success' if dashboard_fix_result else 'Failed'}")
-        else:
-            results.append(f"Error: admin.py not found at {admin_py}")
-            
-        # Fix client_db.py functions
-        if os.path.exists(client_db_py):
-            # Add or update get_dashboard_summary function
-            summary_fix_result = add_get_dashboard_summary(client_db_py)
-            results.append(f"get_dashboard_summary function fix: {'Success' if summary_fix_result else 'Failed'}")
-            
-            # Fix list_clients function
-            clients_fix_result = fix_list_clients(client_db_py)
-            results.append(f"list_clients function fix: {'Success' if clients_fix_result else 'Failed'}")
-        else:
-            results.append(f"Error: client_db.py not found at {client_db_py}")
-            
-        # Create missing tables
-        tables_fix_result = create_missing_tables()
-        results.append(f"Missing tables creation: {'Success' if tables_fix_result else 'Failed'}")
-        
-        # Create HTML output without using problematic f-strings with backslashes
-        result_text = "<br>".join(results)
-        html = f"""
-        <html>
-            <head>
-                <title>Dashboard Fix Results</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    .success {{ color: green; }}
-                    .error {{ color: red; }}
-                    .container {{ max-width: 800px; margin: 0 auto; }}
-                    pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>Dashboard Fix Results</h1>
-                    <div style="background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto;">
-                        {result_text}
-                    </div>
-                    <p><a href="/admin/dashboard">Try accessing the dashboard</a></p>
-                </div>
-            </body>
-        </html>
-        """
-        return html
-    except Exception as e:
-        import traceback
-        error_traceback = traceback.format_exc()
-        html = f"""
-        <html>
-            <head>
-                <title>Dashboard Fix Error</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    .error {{ color: red; }}
-                    .container {{ max-width: 800px; margin: 0 auto; }}
-                    pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1 class="error">Error Running Dashboard Fix</h1>
-                    <p class="error">{str(e)}</p>
-                    <h2>Traceback:</h2>
-                    <pre>{error_traceback}</pre>
-                </div>
-            </body>
-        </html>
-        """
-        return html
-
-@app.route('/run_emergency_admin')
-def run_emergency_admin():
-    """Web route to create an emergency admin user"""
-    try:
-        # Import function from hotfix.py
-        from hotfix import create_emergency_admin
-        
-        # Create emergency admin
-        success = create_emergency_admin()
-        
-        # Get admin details if successful
-        if success:
-            admin_details = """
-            <div style="color: green; padding: 10px; background-color: #e6ffe6; border-radius: 5px;">
-                <p>Emergency admin created successfully!</p>
-                <p>Username: emergency_admin</p>
-                <p>Password: admin123</p>
-            </div>
-            <p><a href="/admin/dashboard">Go to Admin Dashboard</a></p>
-            """
-        else:
-            admin_details = """
-            <div style="color: red; padding: 10px; background-color: #ffe6e6; border-radius: 5px;">
-                <p>Failed to create emergency admin.</p>
-            </div>
-            """
-        
-        # Return the results
-        html = f"""
-        <html>
-            <head>
-                <title>Emergency Admin Creation</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    .container {{ max-width: 800px; margin: 0 auto; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>Emergency Admin Creation</h1>
-                    {admin_details}
-                </div>
-            </body>
-        </html>
-        """
-        return html
-    except Exception as e:
-        import traceback
-        error_traceback = traceback.format_exc()
-        html = f"""
-        <html>
-            <head>
-                <title>Emergency Admin Error</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    .error {{ color: red; }}
-                    .container {{ max-width: 800px; margin: 0 auto; }}
-                    pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1 class="error">Error Creating Emergency Admin</h1>
-                    <p class="error">{str(e)}</p>
-                    <h2>Traceback:</h2>
-                    <pre>{error_traceback}</pre>
-                </div>
-            </body>
-        </html>
-        """
-        return html
-
-def apply_route_fixes():
-    """Apply all route fixes"""
-    import os
-    import sys
-    from flask import Flask
-    
-    # Add the project directory to Python path
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, script_dir)
-    
-    # Get the Flask app
-    from app import app
-    
-    # Apply auth routes fix
-    from auth_fix import fix_auth_routes
-    auth_fixed = fix_auth_routes(app)
-    
-    # Apply admin routes fix
-    from route_fix import fix_admin_routes
-    admin_fixed = fix_admin_routes(app)
-    
-    # Report results
-    if auth_fixed and admin_fixed:
-        print("All route fixes applied successfully!")
-        return True
-    else:
-        print("Some route fixes could not be applied.")
-        return False
-
-if __name__ == "__main__":
-    apply_route_fixes()
-
-
-    
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
 if __name__ == '__main__':
-    # Get port from environment variable or use default
-    port = int(os.environ.get('PORT', 5000))
-    direct_db_fix()
-    
-    # Use 0.0.0.0 to make the app accessible from any IP
-    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
+    # Run database schema upgrade
+    try:
+        if upgrade_database_schema():
+            app.logger.info("Database schema upgraded successfully")
+        else:
+            app.logger.error("Failed to upgrade database schema")
+    except Exception as schema_error:
+        app.logger.error(f"Schema upgrade error: {schema_error}")
+
+
