@@ -86,20 +86,48 @@ def get_client_by_user_id(user_id):
             WHERE c.user_id = ? AND c.active = 1
         ''', (user_id,))
 
+        row = cursor.fetchone()
+        
+        if not row:
+            return None
+
+        # Convert row to dict
+        client_data = dict(row)
+        
+        # Convert default_scans JSON to list if present
+        if client_data.get('default_scans'):
+            try:
+                client_data['default_scans'] = json.loads(client_data['default_scans'])
+        except json.JSONDecodeError:
+            client_data['default_scans'] = []
+        else:
+            client_data['default_scans'] = []
+            
+        return client_data
+    except Exception as e:
+        logging.error(f"Error getting client by user_id: {str(e)}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
 def get_client_id_from_session():
     """Get client ID from session"""
     user_id = session.get('user_id')
     if not user_id:
         return None
     
-    conn = get_db_connection()
-    client = conn.execute(
-        "SELECT id FROM clients WHERE user_id = ?",
-        (user_id,)
-    ).fetchone()
-    conn.close()
-    
-    return client['id'] if client else None
+    conn = None
+    try:
+        conn = get_db_connection()
+        client = conn.execute(
+            "SELECT id FROM clients WHERE user_id = ?",
+            (user_id,)
+        ).fetchone()
+        return client['id'] if client else None
+    finally:
+        if conn:
+            conn.close()
 
 def generate_subdomain(scanner_name):
     """Generate a unique subdomain from scanner name"""
