@@ -70,38 +70,21 @@ def get_client_by_user_id(user_id):
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
+        # Change this query to properly join with customizations table
         cursor.execute('''
-            SELECT c.*, cu.primary_color, cu.secondary_color, cu.logo_path,
-                   cu.default_scans, ds.subdomain, ds.deploy_status
+            SELECT 
+                c.*,
+                cu.primary_color,
+                cu.secondary_color,
+                cu.logo_path,
+                cu.default_scans,
+                ds.subdomain,
+                ds.deploy_status
             FROM clients c
             LEFT JOIN customizations cu ON c.id = cu.client_id
             LEFT JOIN deployed_scanners ds ON c.id = ds.client_id
             WHERE c.user_id = ? AND c.active = 1
         ''', (user_id,))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
-            return None
-            
-        # Convert row to dict
-        client_data = dict(row)
-        
-        # Convert default_scans JSON to list if present
-        if client_data.get('default_scans'):
-            try:
-                client_data['default_scans'] = json.loads(client_data['default_scans'])
-            except json.JSONDecodeError:
-                client_data['default_scans'] = []
-        else:
-            client_data['default_scans'] = []
-            
-        return client_data
-    except Exception as e:
-        import logging
-        logging.error(f"Error getting client by user_id: {str(e)}")
-        return None
 
 def get_client_id_from_session():
     """Get client ID from session"""
@@ -187,14 +170,13 @@ def create_client(client_data, user_id=None):
             conn.close()
             return {'status': 'error', 'message': 'User ID not provided or found in session'}
         
-        # Insert the client
+        # Insert the client - REMOVED color fields from clients table
         cursor.execute("""
             INSERT INTO clients (
                 user_id, business_name, business_domain, contact_email, contact_phone,
                 scanner_name, subscription_level, subscription_status,
-                api_key, created_at, created_by, active, primary_color, secondary_color,
-                updated_at, updated_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                api_key, created_at, created_by, active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         """, (
             user_id,
             business_name,
@@ -206,22 +188,19 @@ def create_client(client_data, user_id=None):
             'active',
             api_key,
             now,
-            user_id,
-            client_data.get('primaryColor', '#FF6900'),
-            client_data.get('secondaryColor', '#808588'),
-            now,
             user_id
         ))
         
         # Get the new client ID
         client_id = cursor.lastrowid
         
-        # Insert customization data if provided
+        # Insert customization data with colors and other customization fields
         customization_data = {
             'client_id': client_id,
-            'primary_color': client_data.get('primaryColor', client_data.get('primary_color', '#FF6900')),
-            'secondary_color': client_data.get('secondaryColor', client_data.get('secondary_color', '#808588')),
-            'last_updated': now,
+            'primary_color': client_data.get('primaryColor', '#FF6900'),
+            'secondary_color': client_data.get('secondaryColor', '#808588'),
+            'created_at': now,
+            'updated_at': now,
             'updated_by': user_id
         }
         
@@ -264,7 +243,7 @@ def create_client(client_data, user_id=None):
             subdomain = f"{subdomain}-{random.randint(100, 999)}"
         
         # Create a deployed scanner record
-        scanner_id = str(uuid.uuid4())  # Generate scanner ID
+        scanner_id = str(uuid.uuid4())
         cursor.execute("""
             INSERT INTO deployed_scanners (
                 id, client_id, subdomain, deploy_status, deploy_date, 
@@ -274,7 +253,7 @@ def create_client(client_data, user_id=None):
             scanner_id,
             client_id,
             subdomain,
-            'pending',  # New scanners start as pending
+            'pending',
             now,
             now,
             '1.0'
