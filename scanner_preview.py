@@ -9,7 +9,9 @@ from functools import wraps
 import os
 import base64
 import re
-import logging 
+import logging
+import secrets
+import hashlib
 from werkzeug.utils import secure_filename
 from contextlib import contextmanager
 from client_db import CLIENT_DB_PATH
