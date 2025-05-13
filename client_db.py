@@ -192,16 +192,23 @@ def save_scanner_configuration(scanner_id: str, client_id: int, config_data: dic
     """Save or update scanner configuration"""
     conn = get_db_connection()
     try:
-        # Generate API key if this is a new configuration
+        cursor = conn.cursor()
+        
+        # Generate API key for new configurations
         api_key = secrets.token_urlsafe(32)
         
-        # Create HTML snippet
+        # Prepare embed code
         html_snippet = f"""
 <!-- CybrScan Security Scanner -->
 <div id="cybrscan-scanner" data-key="{api_key}"></div>
 <script src="https://scanner.cybrscan.com/embed.js"></script>
 """
-        
+
+        # Prepare embed script (minified version for direct inclusion)
+        embed_script = f"""
+(function(){{var s=document.createElement('script');s.src='https://scanner.cybrscan.com/embed.js';s.async=true;document.head.appendChild(s);var d=document.createElement('div');d.id='cybrscan-scanner';d.setAttribute('data-key','{api_key}');document.body.appendChild(d)}})();
+"""
+
         # Prepare configuration JSON
         scanner_config = {
             'name': config_data.get('scannerName', 'Default Scanner'),
@@ -220,8 +227,6 @@ def save_scanner_configuration(scanner_id: str, client_id: int, config_data: dic
             }
         }
 
-        cursor = conn.cursor()
-        
         # Check if configuration already exists
         cursor.execute(
             "SELECT id FROM scanner_configurations WHERE scanner_id = ?",
@@ -245,9 +250,9 @@ def save_scanner_configuration(scanner_id: str, client_id: int, config_data: dic
             cursor.execute("""
                 INSERT INTO scanner_configurations (
                     scanner_id, client_id, name, domain,
-                    configuration, api_key, html_snippet,
+                    configuration, api_key, html_snippet, embed_script,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 scanner_id,
                 client_id,
@@ -256,6 +261,7 @@ def save_scanner_configuration(scanner_id: str, client_id: int, config_data: dic
                 json.dumps(scanner_config),
                 api_key,
                 html_snippet,
+                embed_script,
                 datetime.now().isoformat(),
                 datetime.now().isoformat()
             ))
@@ -266,11 +272,37 @@ def save_scanner_configuration(scanner_id: str, client_id: int, config_data: dic
             'status': 'success',
             'scanner_id': scanner_id,
             'api_key': api_key,
-            'html_snippet': html_snippet
+            'html_snippet': html_snippet,
+            'embed_script': embed_script
         }
     except Exception as e:
         conn.rollback()
         raise e
+    finally:
+        conn.close()
+
+def get_scanner_configuration(api_key: str) -> dict:
+    """Retrieve scanner configuration by API key"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT sc.*, ds.subdomain 
+            FROM scanner_configurations sc
+            JOIN deployed_scanners ds ON sc.scanner_id = ds.id
+            WHERE sc.api_key = ? AND sc.status = 'active'
+        """, (api_key,))
+        
+        result = cursor.fetchone()
+        if result:
+            return {
+                'scanner_id': result['scanner_id'],
+                'configuration': json.loads(result['configuration']),
+                'subdomain': result['subdomain'],
+                'html_snippet': result['html_snippet'],
+                'embed_script': result['embed_script']
+            }
+        return None
     finally:
         conn.close()
 
@@ -314,6 +346,7 @@ def init_scanner_configurations_table():
             configuration JSON NOT NULL,
             api_key VARCHAR(64) UNIQUE NOT NULL,
             html_snippet TEXT,
+            embed_script TEXT,
             status VARCHAR(50) DEFAULT 'active',
             version VARCHAR(10) DEFAULT '1.0',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -322,32 +355,25 @@ def init_scanner_configurations_table():
             FOREIGN KEY (scanner_id) REFERENCES deployed_scanners(id)
         )
         ''')
-        
+
+        # Create necessary indexes
         cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_scanner_api_key 
+        CREATE INDEX IF NOT EXISTS idx_scanner_config_api_key 
         ON scanner_configurations(api_key)
         ''')
-        
+
+        cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_scanner_config_scanner_id 
+        ON scanner_configurations(scanner_id)
+        ''')
+
         conn.commit()
+        return True
+    except Exception as e:
+        logging.error(f"Error creating scanner configurations table: {e}")
+        return False
     finally:
         conn.close()
-
-def with_transaction(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        try:
-            result = func(conn, *args, **kwargs)
-            conn.commit()
-            return result
-        except Exception as e:
-            conn.rollback()
-            logging.error(f"Transaction error in {func.__name__}: {e}")
-            return {'status': 'error', 'message': str(e)}
-        finally:
-            conn.close()
-    return wrapper
 
 def get_client_by_user_id(user_id):
     """Get client data for a specific user"""
