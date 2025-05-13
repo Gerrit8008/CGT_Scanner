@@ -16,6 +16,66 @@ client_bp = Blueprint('client', __name__, url_prefix='/client')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+@client_bp.route('/scanner/create', methods=['GET', 'POST'])
+@admin_required
+def create_scanner(user):
+    """Create a new scanner configuration"""
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            client_id = get_client_id_from_session()
+            
+            # Generate scanner ID
+            scanner_id = str(uuid.uuid4())
+            
+            # Set default configuration if not provided
+            scanner_config = {
+                'scannerName': data.get('scannerName', 'Default Scanner'),
+                'businessDomain': data.get('businessDomain', ''),
+                'scanTypes': data.get('scanTypes', ['security_headers', 'ssl_certificate', 'email_security']),
+                'primaryColor': data.get('primaryColor', '#FF6900'),
+                'secondaryColor': data.get('secondaryColor', '#808588'),
+                'logoUrl': data.get('logoUrl', ''),
+                'customCss': data.get('customCss', ''),
+                'scanFrequency': data.get('scanFrequency', 'daily'),
+                'notificationEmail': data.get('notificationEmail', user.get('email', '')),
+                'webhookUrl': data.get('webhookUrl', '')
+            }
+            
+            # Save scanner configuration
+            result = save_scanner_configuration(
+                scanner_id=scanner_id,
+                client_id=client_id,
+                config_data=scanner_config
+            )
+            
+            if result['status'] == 'success':
+                flash('Scanner created successfully!', 'success')
+                return jsonify({
+                    'status': 'success',
+                    'scanner_id': result['scanner_id'],
+                    'preview_url': url_for('client.preview_scanner', 
+                                         api_key=result['api_key'], 
+                                         _external=True),
+                    'html_snippet': result['html_snippet'],
+                    'embed_script': result['embed_script']
+                })
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Failed to create scanner'
+                }), 500
+                
+        except Exception as e:
+            logging.error(f"Error creating scanner: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+    
+    # GET request - show the creation form
+    return render_template('client/create_scanner.html', user=user)
+
 @client_bp.route('/scanner/customize/<scanner_id>', methods=['GET', 'POST'])
 @admin_required
 def customize_scanner(user, scanner_id):
