@@ -6,6 +6,8 @@ from datetime import datetime
 from client_db import get_db_connection, list_clients, get_client_by_id, update_client
 # Import authentication utilities
 from auth_utils import verify_session
+from scanner_preview import save_scanner_configuration, get_scanner_configuration
+import uuid
 
 # Define client blueprint
 client_bp = Blueprint('client', __name__, url_prefix='/client')
@@ -13,6 +15,81 @@ client_bp = Blueprint('client', __name__, url_prefix='/client')
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+@client_bp.route('/scanner/customize', methods=['GET', 'POST'])
+@admin_required
+def customize_scanner(user):
+    """Scanner customization page"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get user's client if associated
+    client = None
+    if user and 'id' in user:
+        cursor.execute('''
+        SELECT * FROM clients 
+        WHERE user_id = ? AND active = 1
+        ''', (user['id'],))
+        client_row = cursor.fetchone()
+        if client_row:
+            client = dict(client_row)
+    
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            client_id = client['id'] if client else None
+            
+            if not client_id:
+                return jsonify({'status': 'error', 'message': 'No client associated with user'}), 400
+            
+            # Create scanner configuration
+            result = save_scanner_configuration(
+                scanner_id=str(uuid.uuid4()),
+                client_id=client_id,
+                config_data=data
+            )
+            
+            return jsonify({
+                'status': 'success',
+                'scanner_id': result['scanner_id'],
+                'preview_url': url_for('client.preview_scanner', 
+                                     api_key=result['api_key'], 
+                                     _external=True),
+                'html_snippet': result['html_snippet']
+            })
+        except Exception as e:
+            logger.error(f"Error creating scanner: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+    
+    conn.close()
+    return render_template('client/customize_scanner.html', 
+                         user=user,
+                         client=client)
+
+@client_bp.route('/scanner/preview/<api_key>')
+def preview_scanner(api_key):
+    """Preview scanner with specific configuration"""
+    config = get_scanner_configuration(api_key)
+    if not config:
+        abort(404)
+    
+    return render_template('client/scanner_preview.html',
+                         config=config['configuration'],
+                         scanner_id=config['scanner_id'])
+
+@client_bp.route('/api/scanner/<api_key>', methods=['GET'])
+def get_scanner_config(api_key):
+    """Get scanner configuration by API key"""
+    try:
+        config = get_scanner_configuration(api_key)
+        if config:
+            return jsonify({
+                'status': 'success',
+                'configuration': config
+            })
+        return jsonify({'status': 'error', 'message': 'Scanner not found'}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # Middleware to require admin login
 def admin_required(f):
