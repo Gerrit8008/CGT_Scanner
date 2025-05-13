@@ -23,7 +23,7 @@ from config import get_config
 from dotenv import load_dotenv
 from flask import Blueprint
 from api import api_bp  # Import the new API blueprint
-from client_db import init_client_db, CLIENT_DB_PATH
+from client_db import init_client_db, CLIENT_DB_PATH, init_scanner_configurations_table
 from scanner_router import scanner_bp
 from auth import auth_bp
 from admin import admin_bp
@@ -199,6 +199,9 @@ def create_app():
     
     app = Flask(__name__)
     app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+
+    # After creating your Flask app
+    init_scanner_configurations_table()
     
     # Enable CORS
     CORS(app)
