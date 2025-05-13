@@ -82,6 +82,56 @@ from scan import (
     calculate_industry_percentile
 )
 
+# Current system information
+CURRENT_UTC_TIME = "2025-05-13 16:25:41"
+CURRENT_USER = "Gerrit8008"
+
+# Configure scanner preview initialization
+def init_scanner_preview_tables():
+    """Initialize scanner preview tables"""
+    conn = sqlite3.connect(CLIENT_DB_PATH)
+    cursor = conn.cursor()
+    
+    # Create scanner configurations table if not exists
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scanner_configurations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scanner_id TEXT NOT NULL,
+            client_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            domain TEXT,
+            configuration TEXT,
+            api_key TEXT,
+            html_snippet TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            status TEXT DEFAULT 'active',
+            created_by TEXT,
+            last_modified_by TEXT,
+            FOREIGN KEY (client_id) REFERENCES clients (id)
+        )
+    """)
+    
+    # Add system info to logging
+    logging.info(f"Scanner preview tables initialization - Time: {CURRENT_UTC_TIME}, User: {CURRENT_USER}")
+    conn.commit()
+    conn.close()
+
+# Configure upload settings for scanner preview
+SCANNER_UPLOAD_FOLDER = os.path.join('static', 'uploads', 'logos')
+os.makedirs(SCANNER_UPLOAD_FOLDER, exist_ok=True)
+app.config['SCANNER_UPLOAD_FOLDER'] = SCANNER_UPLOAD_FOLDER
+
+# Initialize scanner preview at app startup
+try:
+    init_scanner_preview_tables()
+    app.config['SCANNER_UPLOAD_FOLDER'] = SCANNER_UPLOAD_FOLDER
+    app.config['LAST_INIT_TIME'] = CURRENT_UTC_TIME
+    app.config['LAST_INIT_USER'] = CURRENT_USER
+    logging.info("Scanner preview initialized successfully")
+except Exception as e:
+    logging.error(f"Error initializing scanner preview: {e}")
+
 # Define upload folder for file uploads
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -556,12 +606,11 @@ try:
     app.register_blueprint(scanner_bp)
     app.register_blueprint(client_bp) 
     app.register_blueprint(emergency_bp)
-    app.register_blueprint(scanner_preview_bp)
-    logging.info("Blueprints registered successfully")
+    app.register_blueprint(scanner_preview_bp, url_prefix='/preview')  # Added URL prefix
+    logging.info(f"Blueprints registered successfully at {CURRENT_UTC_TIME} by {CURRENT_USER}")
 except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
-
 # Apply fixes
 try:
     apply_admin_fixes(app)
