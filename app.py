@@ -3716,6 +3716,38 @@ def fix_main_block(content):
     content = re.sub(main_pattern, new_main_block, content, flags=re.DOTALL)
     return content
 
+def add_missing_functions(content):
+    """Add missing function implementations"""
+    # Add log_system_info function if not present
+    if 'def log_system_info():' not in content:
+        log_function = (
+            "\ndef log_system_info():\n"
+            "    \"\"\"Log details about the system environment\"\"\"\n"
+            "    logger = logging.getLogger(__name__)\n"
+            "    \n"
+            "    logger.info(\"----- System Information -----\")\n"
+            "    logger.info(f\"Python version: {sys.version}\")\n"
+            "    logger.info(f\"Platform: {platform.platform()}\")\n"
+            "    logger.info(f\"Working directory: {os.getcwd()}\")\n"
+            "    logger.info(f\"Database path: {DB_PATH}\")\n"
+            "    \n"
+            "    # Test database connection\n"
+            "    try:\n"
+            "        conn = sqlite3.connect(DB_PATH)\n"
+            "        cursor = conn.cursor()\n"
+            "        cursor.execute(\"SELECT sqlite_version()\")\n"
+            "        version = cursor.fetchone()\n"
+            "        logger.info(f\"SQLite version: {version[0]}\")\n"
+            "        conn.close()\n"
+            "        logger.info(\"Database connection successful\")\n"
+            "    except Exception as e:\n"
+            "        logger.warning(f\"Database connection failed: {e}\")\n"
+            "    \n"
+            "    logger.info(\"-----------------------------\")\n"
+        )
+        content += log_function
+    return content
+
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
 if __name__ == '__main__':
