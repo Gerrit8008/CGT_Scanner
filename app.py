@@ -811,23 +811,23 @@ def customize_scanner():
     return render_template('admin/customization-form.html')
 
 # Try to extract network type
-                if "Network Type:" in gateway_info:
-                    try:
-                        network_type = gateway_info.split("Network Type:")[1].split("|")[0].strip()
-                        logging.debug(f"Extracted network type: {network_type}")
-                    except:
-                        logging.warning("Failed to extract network type from gateway info")
-                
-                # Try to extract gateway guesses
-                if "Likely gateways:" in gateway_info:
-                    try:
-                        gateways_part = gateway_info.split("Likely gateways:")[1].strip()
-                        if "|" in gateways_part:
-                            gateways_part = gateways_part.split("|")[0].strip()
-                        gateway_guesses = [g.strip() for g in gateways_part.split(",")]
-                        logging.debug(f"Extracted gateway guesses: {gateway_guesses}")
-                    except:
-                        logging.warning("Failed to extract gateway guesses from gateway info")
+    if "Network Type:" in gateway_info:
+                 try:
+                     network_type = gateway_info.split("Network Type:")[1].split("|")[0].strip()
+                     logging.debug(f"Extracted network type: {network_type}")
+                 except:
+                     logging.warning("Failed to extract network type from gateway info")
+               
+             # Try to extract gateway guesses
+             if "Likely gateways:" in gateway_info:
+                 try:
+                     gateways_part = gateway_info.split("Likely gateways:")[1].strip()
+                     if "|" in gateways_part:
+                         gateways_part = gateways_part.split("|")[0].strip()
+                     gateway_guesses = [g.strip() for g in gateways_part.split(",")]
+                     logging.debug(f"Extracted gateway guesses: {gateway_guesses}")
+                 except:
+                     logging.warning("Failed to extract gateway guesses from gateway info")
 
         # Add additional logging for troubleshooting
         logging.info(f"Rendering results template with scan_id: {scan_id}")
