@@ -835,23 +835,23 @@ def customize_scanner():
     logging.info("Rendering customization form")
     return render_template('admin/customization-form.html')
 
-        # Add additional logging for troubleshooting
-        logging.info(f"Rendering results template with scan_id: {scan_id}")
-        logging.info(f"Template variables: client_ip={client_ip}, network_type={network_type}, gateway_guesses={len(gateway_guesses)}")
+    # Add additional logging for troubleshooting
+    logging.info(f"Rendering results template with scan_id: {scan_id}")
+    logging.info(f"Template variables: client_ip={client_ip}, network_type={network_type}, gateway_guesses={len(gateway_guesses)}")
         
-        # Now render template with all required data
-        return render_template('results.html', 
-                               scan=scan_results,
-                               client_ip=client_ip,
-                               gateway_guesses=gateway_guesses,
-                               network_type=network_type,
-                               gateway_info=gateway_info)
+    # Now render template with all required data
+    return render_template('results.html', 
+                           scan=scan_results,
+                           client_ip=client_ip,
+                           gateway_guesses=gateway_guesses,
+                           network_type=network_type,
+                           gateway_info=gateway_info)
 
-        except Exception as e:
-            logging.error(f"Error loading scan results: {e}")
-            logging.debug(f"Exception traceback: {traceback.format_exc()}")
-            return render_template('error.html', error=f"Error loading scan results: {str(e)}")
-        
+    except Exception as e:
+        logging.error(f"Error loading scan results: {e}")
+        logging.debug(f"Exception traceback: {traceback.format_exc()}")
+        return render_template('error.html', error=f"Error loading scan results: {str(e)}")
+      
 @app.route('/api/email_report', methods=['POST'])
 def api_email_report():
     try:
