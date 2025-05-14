@@ -562,13 +562,6 @@ def run_migrations_route():
 def create_client_direct(conn, cursor, client_data, user_id):
     """Direct database call to create client"""
 
-@app.errorhandler(404)
-def not_found_error(error):
-    """Handle 404 errors"""
-    return jsonify({
-        'status': 'error',
-        'message': 'Resource not found'
-    }), 404
 
 @app.errorhandler(500)
 def internal_error(error):
@@ -731,11 +724,6 @@ def direct_db_fix():
         results.append(f"Error: {str(e)}")
         return "<br>".join(results)
 
-@app.errorhandler(404)
-def handle_404(error):
-    # Pass current_user explicitly in the context
-    return render_template('error.html', message="Page not found", current_user=current_user), 404
-        
 @app.route('/login')
 def login_redirect():
     """Redirect to auth login page"""
@@ -847,24 +835,13 @@ def customize_scanner():
     logging.info("Rendering customization form")
     return render_template('admin/customization-form.html')
 
-# Try to extract network type
+    # Try to extract network type
     if "Network Type:" in gateway_info:
                  try:
                      network_type = gateway_info.split("Network Type:")[1].split("|")[0].strip()
                      logging.debug(f"Extracted network type: {network_type}")
                  except:
                      logging.warning("Failed to extract network type from gateway info")
-               
-             # Try to extract gateway guesses
-             if "Likely gateways:" in gateway_info:
-                 try:
-                     gateways_part = gateway_info.split("Likely gateways:")[1].strip()
-                     if "|" in gateways_part:
-                         gateways_part = gateways_part.split("|")[0].strip()
-                     gateway_guesses = [g.strip() for g in gateways_part.split(",")]
-                     logging.debug(f"Extracted gateway guesses: {gateway_guesses}")
-                 except:
-                     logging.warning("Failed to extract gateway guesses from gateway info")
 
         # Add additional logging for troubleshooting
         logging.info(f"Rendering results template with scan_id: {scan_id}")
@@ -3676,6 +3653,41 @@ def scan_gateway_ports_fixed(gateway_info):
     
     return results
 
+def create_backup():
+    """Create a backup of the current app.py"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_name = f"app_backup_{timestamp}.py"
+    shutil.copy('app.py', backup_name)
+    print(f"✅ Backup created: {backup_name}")
+    return backup_name
+
+def clean_orphaned_code(content):
+    """Remove orphaned code fragments"""
+    # Find and remove the orphaned code at the end
+    orphaned_patterns = [
+        r'\s*# Try to extract network type.*?logging\.warning\("Failed to extract gateway guesses from gateway info"\)',
+        r'\s*import uuid\s*import json\s*from datetime import datetime.*?return \{.*?"subdomain": subdomain\s*\}',
+    ]
+    
+    for pattern in orphaned_patterns:
+        content = re.sub(pattern, '', content, flags=re.DOTALL)
+    
+    return content
+
+def fix_duplicate_error_handlers(content):
+    """Remove duplicate error handlers"""
+    # Remove the first occurrence of 404 handler, keep the second one
+    pattern = r'@app\.errorhandler\(404\)\s*def not_found_error\(error\):.*?return jsonify\({.*?\}\), 404'
+    content = re.sub(pattern, '', content, flags=re.DOTALL)
+    
+    return content
+
+def add_missing_functions(content):
+    """Add missing function implementations"""
+    # Add log_system_info function if not present
+    if 'def log_system_info():' not in content:
+        log_function = '''
+
 def log_system_info():
     """Log details about the system environment"""
     logger = logging.getLogger(__name__)
@@ -3699,6 +3711,97 @@ def log_system_info():
         logger.warning(f"Database connection failed: {e}")
     
     logger.info("-----------------------------")
+
+
+def fix_main_block(content):
+    """Fix the broken main execution block"""
+    # Find the broken main block and replace it
+    main_pattern = r"if __name__ == '__main__':.*$"
+    
+    new_main_block = '''if __name__ == '__main__':
+    # Get port from environment variable or use default
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Run the direct database fix
+    try:
+        direct_db_fix()
+    except Exception as db_fix_error:
+        logging.error(f"Database fix error: {db_fix_error}")
+    
+    # Apply route fixes if needed
+    try:
+        apply_route_fixes()
+    except Exception as route_fix_error:
+        logging.error(f"Route fix error: {route_fix_error}")
+    
+    # Use 0.0.0.0 to make the app accessible from any IP
+    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')'''
+    
+    content = re.sub(main_pattern, new_main_block, content, flags=re.DOTALL)
+    return content
+
+def organize_imports(content):
+    """Organize and deduplicate imports"""
+    # Fix duplicate imports
+    content = re.sub(r'from flask import.*?\n(?=from flask import)', '', content, flags=re.DOTALL)
+    return content
+
+def main():
+    """Main cleanup function"""
+    if not os.path.exists('app.py'):
+        print("❌ Error: app.py not found in current directory")
+        return
+    
+    print("🔧 Starting final cleanup of app.py...")
+    
+    # Create backup
+    backup_name = create_backup()
+    
+    try:
+        # Read current content
+        with open('app.py', 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        print("🧹 Cleaning orphaned code...")
+        content = clean_orphaned_code(content)
+        
+        print("🔧 Fixing duplicate error handlers...")
+        content = fix_duplicate_error_handlers(content)
+        
+        print("➕ Adding missing functions...")
+        content = add_missing_functions(content)
+        
+        print("🔧 Fixing main execution block...")
+        content = fix_main_block(content)
+        
+        print("📦 Organizing imports...")
+        content = organize_imports(content)
+        
+        # Remove excessive whitespace
+        content = re.sub(r'\n{4,}', '\n\n\n', content)
+        
+        # Write cleaned content
+        with open('app.py', 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print("✅ Cleanup completed successfully!")
+        print("\n📋 Summary of changes:")
+        print("  - Removed orphaned code fragments")
+        print("  - Fixed duplicate error handlers")
+        print("  - Added missing function implementations")
+        print("  - Fixed broken main execution block")
+        print("  - Organized imports")
+        print("\n🚀 Next steps:")
+        print("  1. Test the application: python app.py")
+        print("  2. Check the logs for any remaining issues")
+        print(f"  3. If issues persist, restore from backup: {backup_name}")
+        
+    except Exception as e:
+        print(f"❌ Error during cleanup: {str(e)}")
+        print(f"🔄 Restoring from backup: {backup_name}")
+        shutil.copy(backup_name, 'app.py')
+        print("✅ Restored from backup")
+
 
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
