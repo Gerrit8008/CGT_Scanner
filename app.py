@@ -3684,6 +3684,9 @@ def log_system_info():
         logger.warning(f"Database connection failed: {e}")
     
     logger.info("-----------------------------")
+'''
+        return content + log_function
+    return content
 
 
 def fix_main_block(content):
