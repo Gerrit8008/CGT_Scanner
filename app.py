@@ -3836,10 +3836,12 @@ def direct_db_fix():
                 100000
             ).hex()
             
-            cursor.execute('''
-            INSERT INTO users (username, email, password_hash, salt, role, full_name, created_at, active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-            ''', ('admin', 'admin@example.com', password_hash, salt, 'admin', 'Admin User', datetime.now().isoformat()))
+            # Fixed indentation for the SQL query
+            cursor.execute(
+                "INSERT INTO users (username, email, password_hash, salt, role, full_name, created_at, active) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+                ('admin', 'admin@example.com', password_hash, salt, 'admin', 'Admin User', datetime.now().isoformat())
+            )
             
             conn.commit()
             logger.info("Created admin user")
