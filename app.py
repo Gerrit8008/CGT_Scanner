@@ -847,10 +847,10 @@ def customize_scanner():
                            network_type=network_type,
                            gateway_info=gateway_info)
 
-    except Exception as e:
-        logging.error(f"Error loading scan results: {e}")
-        logging.debug(f"Exception traceback: {traceback.format_exc()}")
-        return render_template('error.html', error=f"Error loading scan results: {str(e)}")
+        except Exception as e:
+            logging.error(f"Error loading scan results: {e}")
+            logging.debug(f"Exception traceback: {traceback.format_exc()}")
+            return render_template('error.html', error=f"Error loading scan results: {str(e)}")
       
 @app.route('/api/email_report', methods=['POST'])
 def api_email_report():
