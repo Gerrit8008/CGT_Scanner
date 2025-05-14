@@ -835,14 +835,6 @@ def customize_scanner():
     logging.info("Rendering customization form")
     return render_template('admin/customization-form.html')
 
-    # Try to extract network type
-    if "Network Type:" in gateway_info:
-                 try:
-                     network_type = gateway_info.split("Network Type:")[1].split("|")[0].strip()
-                     logging.debug(f"Extracted network type: {network_type}")
-                 except:
-                     logging.warning("Failed to extract network type from gateway info")
-
         # Add additional logging for troubleshooting
         logging.info(f"Rendering results template with scan_id: {scan_id}")
         logging.info(f"Template variables: client_ip={client_ip}, network_type={network_type}, gateway_guesses={len(gateway_guesses)}")
@@ -855,10 +847,10 @@ def customize_scanner():
                                network_type=network_type,
                                gateway_info=gateway_info)
 
-    except Exception as e:
-        logging.error(f"Error loading scan results: {e}")
-        logging.debug(f"Exception traceback: {traceback.format_exc()}")
-        return render_template('error.html', error=f"Error loading scan results: {str(e)}")
+        except Exception as e:
+            logging.error(f"Error loading scan results: {e}")
+            logging.debug(f"Exception traceback: {traceback.format_exc()}")
+            return render_template('error.html', error=f"Error loading scan results: {str(e)}")
         
 @app.route('/api/email_report', methods=['POST'])
 def api_email_report():
