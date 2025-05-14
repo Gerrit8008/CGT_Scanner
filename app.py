@@ -3692,6 +3692,40 @@ def fix_main_block(content):
     main_pattern = r"if __name__ == '__main__':.*$"
     
     new_main_block = '''if __name__ == '__main__':
+        # Get port from environment variable or use default
+        port = int(os.environ.get('PORT', 5000))
+        
+        # Run the direct database fix
+        try:
+            direct_db_fix()
+        except Exception as db_fix_error:
+            logging.error(f"Database fix error: {db_fix_error}")
+        
+        # Apply route fixes if needed
+        try:
+            apply_route_fixes()
+        except Exception as route_fix_error:
+            logging.error(f"Route fix error: {route_fix_error}")
+        
+        # Use 0.0.0.0 to make the app accessible from any IP
+        app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
+    '''
+    
+    content = re.sub(main_pattern, new_main_block, content, flags=re.DOTALL)
+    return content
+
+# ---------------------------- MAIN ENTRY POINT ----------------------------
+
+if __name__ == '__main__':
+    # Run database schema upgrade
+    try:
+        if upgrade_database_schema():
+            app.logger.info("Database schema upgraded successfully")
+        else:
+            app.logger.error("Failed to upgrade database schema")
+    except Exception as schema_error:
+        app.logger.error(f"Schema upgrade error: {schema_error}")
+    
     # Get port from environment variable or use default
     port = int(os.environ.get('PORT', 5000))
     
@@ -3709,83 +3743,3 @@ def fix_main_block(content):
     
     # Use 0.0.0.0 to make the app accessible from any IP
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
-    
-    content = re.sub(main_pattern, new_main_block, content, flags=re.DOTALL)
-    return content
-
-def organize_imports(content):
-    """Organize and deduplicate imports"""
-    # Fix duplicate imports
-    content = re.sub(r'from flask import.*?\n(?=from flask import)', '', content, flags=re.DOTALL)
-    return content
-
-def main():
-    """Main cleanup function"""
-    if not os.path.exists('app.py'):
-        print("❌ Error: app.py not found in current directory")
-        return
-    
-    print("🔧 Starting final cleanup of app.py...")
-    
-    # Create backup
-    backup_name = create_backup()
-    
-    try:
-        # Read current content
-        with open('app.py', 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        print("🧹 Cleaning orphaned code...")
-        content = clean_orphaned_code(content)
-        
-        print("🔧 Fixing duplicate error handlers...")
-        content = fix_duplicate_error_handlers(content)
-        
-        print("➕ Adding missing functions...")
-        content = add_missing_functions(content)
-        
-        print("🔧 Fixing main execution block...")
-        content = fix_main_block(content)
-        
-        print("📦 Organizing imports...")
-        content = organize_imports(content)
-        
-        # Remove excessive whitespace
-        content = re.sub(r'\n{4,}', '\n\n\n', content)
-        
-        # Write cleaned content
-        with open('app.py', 'w', encoding='utf-8') as f:
-            f.write(content)
-        
-        print("✅ Cleanup completed successfully!")
-        print("\n📋 Summary of changes:")
-        print("  - Removed orphaned code fragments")
-        print("  - Fixed duplicate error handlers")
-        print("  - Added missing function implementations")
-        print("  - Fixed broken main execution block")
-        print("  - Organized imports")
-        print("\n🚀 Next steps:")
-        print("  1. Test the application: python app.py")
-        print("  2. Check the logs for any remaining issues")
-        print(f"  3. If issues persist, restore from backup: {backup_name}")
-        
-    except Exception as e:
-        print(f"❌ Error during cleanup: {str(e)}")
-        print(f"🔄 Restoring from backup: {backup_name}")
-        shutil.copy(backup_name, 'app.py')
-        print("✅ Restored from backup")
-
-
-# ---------------------------- MAIN ENTRY POINT ----------------------------
-
-if __name__ == '__main__':
-    # Run database schema upgrade
-    try:
-        if upgrade_database_schema():
-            app.logger.info("Database schema upgraded successfully")
-        else:
-            app.logger.error("Failed to upgrade database schema")
-    except Exception as schema_error:
-        app.logger.error(f"Schema upgrade error: {schema_error}")
-
-
