@@ -3691,24 +3691,27 @@ def fix_main_block(content):
     # Find the broken main block and replace it
     main_pattern = r"if __name__ == '__main__':.*$"
     
-    new_main_block = '''if __name__ == '__main__':
-        # Get port from environment variable or use default
-        port = int(os.environ.get('PORT', 5000))
-        
-        # Run the direct database fix
-        try:
-            direct_db_fix()
-        except Exception as db_fix_error:
-            logging.error(f"Database fix error: {db_fix_error}")
-        
-        # Apply route fixes if needed
-        try:
-            apply_route_fixes()
-        except Exception as route_fix_error:
-            logging.error(f"Route fix error: {route_fix_error}")
-        
-        # Use 0.0.0.0 to make the app accessible from any IP
-        app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')'''
+    # Create the replacement string using normal string formatting
+    new_main_block = (
+        "if __name__ == '__main__':\n"
+        "    # Get port from environment variable or use default\n"
+        "    port = int(os.environ.get('PORT', 5000))\n"
+        "    \n"
+        "    # Run the direct database fix\n"
+        "    try:\n"
+        "        direct_db_fix()\n"
+        "    except Exception as db_fix_error:\n"
+        "        logging.error(f\"Database fix error: {db_fix_error}\")\n"
+        "    \n"
+        "    # Apply route fixes if needed\n"
+        "    try:\n"
+        "        apply_route_fixes()\n"
+        "    except Exception as route_fix_error:\n"
+        "        logging.error(f\"Route fix error: {route_fix_error}\")\n"
+        "    \n"
+        "    # Use 0.0.0.0 to make the app accessible from any IP\n"
+        "    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')\n"
+    )
     
     content = re.sub(main_pattern, new_main_block, content, flags=re.DOTALL)
     return content
