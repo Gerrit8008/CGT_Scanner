@@ -3708,8 +3708,7 @@ def fix_main_block(content):
             logging.error(f"Route fix error: {route_fix_error}")
         
         # Use 0.0.0.0 to make the app accessible from any IP
-        app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
-    '''
+        app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')'''
     
     content = re.sub(main_pattern, new_main_block, content, flags=re.DOTALL)
     return content
