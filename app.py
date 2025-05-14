@@ -2037,9 +2037,6 @@ def get_client_id_from_request():
 
 def create_client_database(client_data, user_id, cursor):
     """Create client in database"""
-    import uuid
-    import json
-    from datetime import datetime
     
     # Validate required fields
     required_fields = ['business_name', 'business_domain', 'contact_email']
@@ -2131,7 +2128,6 @@ def create_client_database(client_data, user_id, cursor):
         "subdomain": subdomain
     }
 
-if __name__ == '__main__':
     # Get port from environment variable or use default
     port = int(os.environ.get('PORT', 5000))
     
