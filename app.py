@@ -3787,12 +3787,10 @@ def organize_imports(content):
 
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
-# ---------------------------- MAIN ENTRY POINT ----------------------------
 
 def log_system_info():
     """Log details about the system environment"""
     logger = logging.getLogger(__name__)
-    
     logger.info("----- System Information -----")
     logger.info(f"Python version: {sys.version}")
     logger.info(f"Platform: {platform.platform()}")
@@ -3826,7 +3824,6 @@ def direct_db_fix():
             import secrets
             import hashlib
             
-            # Create admin user
             salt = secrets.token_hex(16)
             password = 'admin123'
             password_hash = hashlib.pbkdf2_hmac(
@@ -3836,7 +3833,6 @@ def direct_db_fix():
                 100000
             ).hex()
             
-            # Fixed indentation for the SQL query
             cursor.execute(
                 "INSERT INTO users (username, email, password_hash, salt, role, full_name, created_at, active) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
@@ -3853,36 +3849,56 @@ def direct_db_fix():
         logger.error(f"Database fix error: {e}")
         return False
 
+def upgrade_database_schema():
+    """Upgrade database schema to latest version"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA user_version")
+        current_version = cursor.fetchone()[0]
+        latest_version = 1
+        
+        if current_version < latest_version:
+            logger.info(f"Upgrading database schema from {current_version} to {latest_version}")
+            cursor.execute("PRAGMA user_version = ?", (latest_version,))
+            conn.commit()
+            logger.info("Database schema upgrade completed")
+            return True
+        else:
+            logger.info("Database schema is up to date")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Database schema upgrade failed: {e}")
+        return False
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 def apply_route_fixes():
     """Apply all route fixes"""
     try:
-        # Apply auth routes fix
-        try:
-            from auth_fix import fix_auth_routes
-            auth_fixed = fix_auth_routes(app)
-        except ImportError:
-            logging.warning("auth_fix module not found")
-            auth_fixed = False
-        
-        # Apply admin routes fix
-        try:
-            from route_fix import fix_admin_routes
-            admin_fixed = fix_admin_routes(app)
-        except ImportError:
-            logging.warning("route_fix module not found")
-            admin_fixed = False
-        
-        # Report results
-        if auth_fixed and admin_fixed:
-            logging.info("All route fixes applied successfully!")
-            return True
-        else:
-            logging.warning("Some route fixes could not be applied.")
-            return False
-    except Exception as e:
-        logging.error(f"Error applying route fixes: {e}")
+        from auth_fix import fix_auth_routes
+        auth_fixed = fix_auth_routes(app)
+    except ImportError:
+        logging.warning("auth_fix module not found")
+        auth_fixed = False
+    
+    try:
+        from route_fix import fix_admin_routes
+        admin_fixed = fix_admin_routes(app)
+    except ImportError:
+        logging.warning("route_fix module not found")
+        admin_fixed = False
+    
+    if auth_fixed and admin_fixed:
+        logging.info("All route fixes applied successfully!")
+        return True
+    else:
+        logging.warning("Some route fixes could not be applied.")
         return False
 
+# Final application setup
 if __name__ == '__main__':
     # Run database schema upgrade
     try:
