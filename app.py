@@ -3787,6 +3787,100 @@ def organize_imports(content):
 
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
+# ---------------------------- MAIN ENTRY POINT ----------------------------
+
+def log_system_info():
+    """Log details about the system environment"""
+    logger = logging.getLogger(__name__)
+    
+    logger.info("----- System Information -----")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Platform: {platform.platform()}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    logger.info(f"Database path: {DB_PATH}")
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT sqlite_version()")
+        version = cursor.fetchone()
+        logger.info(f"SQLite version: {version[0]}")
+        conn.close()
+        logger.info("Database connection successful")
+    except Exception as e:
+        logger.warning(f"Database connection failed: {e}")
+    
+    logger.info("-----------------------------")
+
+def direct_db_fix():
+    """Direct database fix function"""
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if admin user exists
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        admin_user = cursor.fetchone()
+        
+        if not admin_user:
+            import secrets
+            import hashlib
+            
+            # Create admin user
+            salt = secrets.token_hex(16)
+            password = 'admin123'
+            password_hash = hashlib.pbkdf2_hmac(
+                'sha256', 
+                password.encode(), 
+                salt.encode(), 
+                100000
+            ).hex()
+            
+            cursor.execute('''
+            INSERT INTO users (username, email, password_hash, salt, role, full_name, created_at, active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            ''', ('admin', 'admin@example.com', password_hash, salt, 'admin', 'Admin User', datetime.now().isoformat()))
+            
+            conn.commit()
+            logger.info("Created admin user")
+        
+        conn.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Database fix error: {e}")
+        return False
+
+def apply_route_fixes():
+    """Apply all route fixes"""
+    try:
+        # Apply auth routes fix
+        try:
+            from auth_fix import fix_auth_routes
+            auth_fixed = fix_auth_routes(app)
+        except ImportError:
+            logging.warning("auth_fix module not found")
+            auth_fixed = False
+        
+        # Apply admin routes fix
+        try:
+            from route_fix import fix_admin_routes
+            admin_fixed = fix_admin_routes(app)
+        except ImportError:
+            logging.warning("route_fix module not found")
+            admin_fixed = False
+        
+        # Report results
+        if auth_fixed and admin_fixed:
+            logging.info("All route fixes applied successfully!")
+            return True
+        else:
+            logging.warning("Some route fixes could not be applied.")
+            return False
+    except Exception as e:
+        logging.error(f"Error applying route fixes: {e}")
+        return False
+
 if __name__ == '__main__':
     # Run database schema upgrade
     try:
