@@ -3721,32 +3721,69 @@ def add_missing_functions(content):
     # Add log_system_info function if not present
     if 'def log_system_info():' not in content:
         log_function = (
-            "\ndef log_system_info():\n"
-            "    \"\"\"Log details about the system environment\"\"\"\n"
+            "\n"
+            "def log_system_info():\n"
             "    logger = logging.getLogger(__name__)\n"
-            "    \n"
-            "    logger.info(\"----- System Information -----\")\n"
-            "    logger.info(f\"Python version: {sys.version}\")\n"
-            "    logger.info(f\"Platform: {platform.platform()}\")\n"
-            "    logger.info(f\"Working directory: {os.getcwd()}\")\n"
-            "    logger.info(f\"Database path: {DB_PATH}\")\n"
-            "    \n"
-            "    # Test database connection\n"
+            "    logger.info('----- System Information -----')\n"
+            "    logger.info(f'Python version: {sys.version}')\n"
+            "    logger.info(f'Platform: {platform.platform()}')\n"
+            "    logger.info(f'Working directory: {os.getcwd()}')\n"
+            "    logger.info(f'Database path: {DB_PATH}')\n"
+            "\n"
             "    try:\n"
             "        conn = sqlite3.connect(DB_PATH)\n"
             "        cursor = conn.cursor()\n"
-            "        cursor.execute(\"SELECT sqlite_version()\")\n"
+            "        cursor.execute('SELECT sqlite_version()')\n"
             "        version = cursor.fetchone()\n"
-            "        logger.info(f\"SQLite version: {version[0]}\")\n"
+            "        logger.info(f'SQLite version: {version[0]}')\n"
             "        conn.close()\n"
-            "        logger.info(\"Database connection successful\")\n"
+            "        logger.info('Database connection successful')\n"
             "    except Exception as e:\n"
-            "        logger.warning(f\"Database connection failed: {e}\")\n"
-            "    \n"
-            "    logger.info(\"-----------------------------\")\n"
+            "        logger.warning(f'Database connection failed: {e}')\n"
+            "\n"
+            "    logger.info('-----------------------------')\n"
         )
-        content += log_function
+        return content + log_function
     return content
+
+def clean_orphaned_code(content):
+    """Remove orphaned code fragments"""
+    orphaned_patterns = [
+        r'\s*# Try to extract network type.*?logging\.warning\("Failed to extract gateway guesses from gateway info"\)',
+        r'\s*import uuid\s*import json\s*from datetime import datetime.*?return \{.*?"subdomain": subdomain\s*\}',
+    ]
+    
+    for pattern in orphaned_patterns:
+        content = re.sub(pattern, '', content, flags=re.DOTALL)
+    return content
+
+def fix_duplicate_error_handlers(content):
+    """Remove duplicate error handlers"""
+    pattern = r'@app\.errorhandler\(404\)\s*def not_found_error\(error\):.*?return jsonify\({.*?\}\), 404'
+    return re.sub(pattern, '', content, flags=re.DOTALL)
+
+def fix_main_block(content):
+    """Fix the broken main execution block"""
+    main_pattern = r"if __name__ == '__main__':.*$"
+    new_main_block = (
+        "if __name__ == '__main__':\n"
+        "    port = int(os.environ.get('PORT', 5000))\n"
+        "    try:\n"
+        "        direct_db_fix()\n"
+        "    except Exception as db_fix_error:\n"
+        "        logging.error(f'Database fix error: {db_fix_error}')\n"
+        "    try:\n"
+        "        apply_route_fixes()\n"
+        "    except Exception as route_fix_error:\n"
+        "        logging.error(f'Route fix error: {route_fix_error}')\n"
+        "    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')\n"
+    )
+    return re.sub(main_pattern, new_main_block, content, flags=re.DOTALL)
+
+def organize_imports(content):
+    """Organize and deduplicate imports"""
+    # Fix duplicate imports
+    return re.sub(r'from flask import.*?\n(?=from flask import)', '', content, flags=re.DOTALL)
 
 # ---------------------------- MAIN ENTRY POINT ----------------------------
 
