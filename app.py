@@ -2035,24 +2035,9 @@ def get_client_id_from_request():
     except:
         return 1
 
-    
-    # Get port from environment variable or use default
-    port = int(os.environ.get('PORT', 5000))
-    
-    # Run the direct database fix
-    try:
-        direct_db_fix()
-    except Exception as db_fix_error:
-        logging.error(f"Database fix error: {db_fix_error}")
-    
-    # Apply route fixes if needed
-    try:
-        apply_route_fixes()
-    except Exception as route_fix_error:
-        logging.error(f"Route fix error: {route_fix_error}")
-    
-    # Use 0.0.0.0 to make the app accessible from any IP
-    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')    import uuid
+def create_client_database(client_data, user_id, cursor):
+    """Create client in database"""
+    import uuid
     import json
     from datetime import datetime
     
@@ -2145,6 +2130,25 @@ def get_client_id_from_request():
         "api_key": api_key,
         "subdomain": subdomain
     }
+
+if __name__ == '__main__':
+    # Get port from environment variable or use default
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Run the direct database fix
+    try:
+        direct_db_fix()
+    except Exception as db_fix_error:
+        logging.error(f"Database fix error: {db_fix_error}")
+    
+    # Apply route fixes if needed
+    try:
+        apply_route_fixes()
+    except Exception as route_fix_error:
+        logging.error(f"Route fix error: {route_fix_error}")
+    
+    # Use 0.0.0.0 to make the app accessible from any IP
+    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
     
 # Add a route for the admin dashboard
 @app.route('/admin/dashboard', methods=['GET'])
