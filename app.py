@@ -28,6 +28,7 @@ from email_handler import send_email_report
 from config import get_config
 from api import api_bp
 from client_db import init_client_db, CLIENT_DB_PATH, init_scanner_configurations_table
+from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
 from scanner_router import scanner_bp
 from auth import auth_bp
 from admin import admin_bp
@@ -100,6 +101,7 @@ def log_system_info():
     logger.info(f"Working directory: {os.getcwd()}")
     logger.info(f"Database path: {DB_PATH}")
     
+    # Test database connection
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -112,7 +114,7 @@ def log_system_info():
         logger.warning(f"Database connection failed: {e}")
     
     logger.info("-----------------------------")
-
+    
 # Then add the function call
 log_system_info()
 
