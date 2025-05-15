@@ -91,6 +91,30 @@ GATEWAY_PORT_WARNINGS = {
     22: ("SSH", "Low"),
 }
 
+def log_system_info():
+    """Log details about the system environment"""
+    logger = logging.getLogger(__name__)
+    logger.info("----- System Information -----")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Platform: {platform.platform()}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    logger.info(f"Database path: {DB_PATH}")
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT sqlite_version()")
+        version = cursor.fetchone()
+        logger.info(f"SQLite version: {version[0]}")
+        conn.close()
+        logger.info("Database connection successful")
+    except Exception as e:
+        logger.warning(f"Database connection failed: {e}")
+    
+    logger.info("-----------------------------")
+
+# Then add the function call
+log_system_info()
 
 # Setup logging
 def setup_logging():
