@@ -500,6 +500,7 @@ except Exception as config_error:
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
 emergency_bp = Blueprint('emergency', __name__)
+scanner_preview_bp = Blueprint('scanner_preview', __name__)
 
 # Register blueprints
 try:
@@ -509,13 +510,22 @@ try:
     app.register_blueprint(api_bp)
     app.register_blueprint(scanner_bp)
     app.register_blueprint(client_bp) 
-    app.register_blueprint(emergency_bp)
-    app.register_blueprint(scanner_preview_bp, url_prefix='/preview')  # Added URL prefix
+    app.register_blueprint(emergency_bp)  # Add this line
+    app.register_blueprint(scanner_preview_bp, url_prefix='/preview')
     logging.info(f"Blueprints registered successfully at {CURRENT_UTC_TIME} by {CURRENT_USER}")
 except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
+try:
+    from admin_fix_integration import apply_admin_fixes
+    apply_admin_fixes(app)
+    add_admin_fix_route(app)
+    logging.info("Fixes applied successfully")
+except Exception as fix_error:
+    logging.error(f"Error applying fixes: {fix_error}")
+    logging.debug(f"Exception traceback: {traceback.format_exc()}")
+    
 # Apply fixes
 try:
     apply_admin_fixes(app)
