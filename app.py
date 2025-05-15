@@ -517,15 +517,7 @@ except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
-try:
-    from admin_fix_integration import apply_admin_fixes
-    apply_admin_fixes(app)
-    add_admin_fix_route(app)
-    logging.info("Fixes applied successfully")
-except Exception as fix_error:
-    logging.error(f"Error applying fixes: {fix_error}")
-    logging.debug(f"Exception traceback: {traceback.format_exc()}")
-    
+   
 # Apply fixes
 try:
     apply_admin_fixes(app)
@@ -1976,17 +1968,36 @@ def direct_db_fix():
         logger.error(f"Database fix error: {e}")
         return False
 
+def add_admin_fix_route(app):
+    """Add the missing admin fix route function"""
+    try:
+        @app.route('/admin_fix_route')
+        def admin_fix_route():
+            """Route to test admin fix functionality"""
+            return jsonify({
+                "status": "success",
+                "message": "Admin fix route is working",
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        logger.info("Added admin fix route successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error adding admin fix route: {e}")
+        return False
+
 def apply_admin_fixes(app):
     """Apply fixes to admin functionality"""
-    # Add any admin-specific fixes here
-    logger.info("Admin fixes applied")
-
-def add_admin_fix_route(app):
-    """Add route for admin fixes"""
-    @app.route('/admin_fix')
-    def admin_fix_route():
-        return {"status": "Admin fix route active"}
-
+    try:
+        # First, ensure add_admin_fix_route is defined
+        add_admin_fix_route(app)
+        
+        # Add any other admin fixes here
+        logger.info("Admin fixes applied successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error applying admin fixes: {e}")
+        return False
 
 def apply_route_fixes():
     """Apply all route fixes"""
@@ -3917,9 +3928,57 @@ if __name__ == '__main__':
     
     # Apply route fixes if needed
     try:
-        apply_route_fixes()
-    except Exception as route_fix_error:
-        logging.error(f"Route fix error: {route_fix_error}")
+        def apply_admin_fixes(app):
+        """Apply fixes to admin functionality"""
+        try:
+            # Add the missing admin fix route
+            add_admin_fix_route(app)
+            
+            # Add any other admin fixes here
+            logger.info("Admin fixes applied successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error applying admin fixes: {e}")
+            return False
+    
+        def add_admin_fix_route(app):
+            """Add the missing admin fix route function"""
+            try:
+                @app.route('/admin_fix_route')
+                def admin_fix_route():
+                    """Route to test admin fix functionality"""
+                    return jsonify({
+                        "status": "success",
+                        "message": "Admin fix route is working",
+                        "timestamp": datetime.now().isoformat()
+                    })
+            
+                logger.info("Added admin fix route successfully")
+                return True
+            except Exception as e:
+                logger.error(f"Error adding admin fix route: {e}")
+                return False
+    
+        # Get port from environment variable or use default
+        port = int(os.environ.get('PORT', 5000))
+    
+        # Run the direct database fix
+        try:
+            direct_db_fix()
+        except Exception as db_fix_error:
+            logging.error(f"Database fix error: {db_fix_error}")
+    
+        # Apply route fixes if needed
+        try:
+            apply_route_fixes()
+        except Exception as route_fix_error:
+            logging.error(f"Route fix error: {route_fix_error}")
+    
+        # Apply admin fixes
+        try:
+            apply_admin_fixes(app)
+        except Exception as admin_fix_error:
+            logging.error(f"Admin fix error: {admin_fix_error}")
     
     # Use 0.0.0.0 to make the app accessible from any IP
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
