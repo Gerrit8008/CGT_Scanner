@@ -115,38 +115,7 @@ def log_system_info():
         logger.warning(f"Database connection failed: {e}")
     
     logger.info("-----------------------------")
-
-def add_admin_fix_route(app):
-    """Add the missing admin fix route function"""
-    try:
-        @app.route('/admin_fix_route')
-        def admin_fix_route():
-            """Route to test admin fix functionality"""
-            return jsonify({
-                "status": "success",
-                "message": "Admin fix route is working",
-                "timestamp": datetime.now().isoformat()
-            })
-        
-        logger.info("Added admin fix route successfully")
-        return True
-    except Exception as e:
-        logger.error(f"Error adding admin fix route: {e}")
-        return False
-
-def apply_admin_fixes(app):
-    """Apply fixes to admin functionality"""
-    try:
-        # Add the missing admin fix route
-        add_admin_fix_route(app)
-        
-        # Add any other admin fixes here
-        logger.info("Admin fixes applied successfully")
-        return True
-    except Exception as e:
-        logger.error(f"Error applying admin fixes: {e}")
-        return False
-        
+    
 # Then add the function call
 log_system_info()
 
@@ -536,54 +505,31 @@ scanner_preview_bp = Blueprint('scanner_preview', __name__)
 # Register blueprints
 try:
     register_debug_middleware(app)
-    
-    # Check if blueprints are already registered before registering them
-    if 'auth' not in app.blueprints:
-        app.register_blueprint(auth_bp)
-    else:
-        logging.warning("auth blueprint already registered, skipping")
-        
-    if 'admin' not in app.blueprints:
-        app.register_blueprint(admin_bp)
-    else:
-        logging.warning("admin blueprint already registered, skipping")
-        
-    if 'api' not in app.blueprints:
-        app.register_blueprint(api_bp)
-    else:
-        logging.warning("api blueprint already registered, skipping")
-        
-    if 'scanner' not in app.blueprints:
-        app.register_blueprint(scanner_bp)
-    else:
-        logging.warning("scanner blueprint already registered, skipping")
-        
-    if 'client' not in app.blueprints:
-        app.register_blueprint(client_bp)
-    else:
-        logging.warning("client blueprint already registered, skipping")
-        
-    if 'emergency' not in app.blueprints:
-        app.register_blueprint(emergency_bp)
-    else:
-        logging.warning("emergency blueprint already registered, skipping")
-        
-    if 'scanner_preview' not in app.blueprints:
-        app.register_blueprint(scanner_preview_bp, url_prefix='/preview')
-    else:
-        logging.warning("scanner_preview blueprint already registered, skipping")
-        
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(scanner_bp)
+    app.register_blueprint(client_bp) 
+    app.register_blueprint(emergency_bp)  # Add this line
+    app.register_blueprint(scanner_preview_bp, url_prefix='/preview')
     logging.info(f"Blueprints registered successfully at {CURRENT_UTC_TIME} by {CURRENT_USER}")
 except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
-
-   
+try:
+    from admin_fix_integration import apply_admin_fixes
+    apply_admin_fixes(app)
+    add_admin_fix_route(app)
+    logging.info("Fixes applied successfully")
+except Exception as fix_error:
+    logging.error(f"Error applying fixes: {fix_error}")
+    logging.debug(f"Exception traceback: {traceback.format_exc()}")
+    
 # Apply fixes
 try:
-    # Apply admin fixes (this will call add_admin_fix_route internally)
     apply_admin_fixes(app)
+    add_admin_fix_route(app)
     logging.info("Fixes applied successfully")
 except Exception as fix_error:
     logging.error(f"Error applying fixes: {fix_error}")
@@ -1662,7 +1608,7 @@ def debug_submit():
     except Exception as e:
         return f"Error: {str(e)}"
 
-@app.route('/admin_main', endpoint='main_admin_redirect')
+@app.route('/admin', endpoint='main_admin_redirect')
 def admin_main_redirect():
     """Redirect to admin dashboard"""
     return redirect(url_for('admin.dashboard'))
@@ -1956,6 +1902,41 @@ def run_emergency_admin():
         """
         return html
 
+def upgrade_database_schema():
+    """Upgrade database schema to latest version"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check current schema version
+        cursor.execute("PRAGMA user_version")
+        current_version = cursor.fetchone()[0]
+        
+        # Current expected version
+        latest_version = 1
+        
+        if current_version < latest_version:
+            logger.info(f"Upgrading database schema from {current_version} to {latest_version}")
+            
+            # Add any necessary schema updates here
+            cursor.execute("PRAGMA user_version = {}".format(latest_version))
+            conn.commit()
+            
+            logger.info("Database schema upgrade completed")
+            return True
+        else:
+            logger.info("Database schema is up to date")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Database schema upgrade failed: {e}")
+        return False
+    finally:
+        try:
+            conn.close()
+        except:
+            pass
+
 def direct_db_fix():
     """Direct database fix function"""
     try:
@@ -1995,35 +1976,47 @@ def direct_db_fix():
         logger.error(f"Database fix error: {e}")
         return False
 
-def add_admin_fix_route(app):
-    """Add the missing admin fix route function"""
-    try:
-        @app.route('/admin_fix_route')
-        def admin_fix_route():
-            """Route to test admin fix functionality"""
-            return jsonify({
-                "status": "success",
-                "message": "Admin fix route is working",
-                "timestamp": datetime.now().isoformat()
-            })
-        
-        logger.info("Added admin fix route successfully")
-        return True
-    except Exception as e:
-        logger.error(f"Error adding admin fix route: {e}")
-        return False
-
 def apply_admin_fixes(app):
     """Apply fixes to admin functionality"""
+    # Add any admin-specific fixes here
+    logger.info("Admin fixes applied")
+
+def add_admin_fix_route(app):
+    """Add route for admin fixes"""
+    @app.route('/admin_fix')
+    def admin_fix_route():
+        return {"status": "Admin fix route active"}
+
+
+def apply_route_fixes():
+    """Apply all route fixes"""
     try:
-        # First, ensure add_admin_fix_route is defined
-        add_admin_fix_route(app)
+        # Get the Flask app
+        # Apply auth routes fix
+        try:
+            from auth_fix import fix_auth_routes
+            auth_fixed = fix_auth_routes(app)
+        except ImportError:
+            logging.warning("auth_fix module not found")
+            auth_fixed = False
         
-        # Add any other admin fixes here
-        logger.info("Admin fixes applied successfully")
-        return True
+        # Apply admin routes fix
+        try:
+            from route_fix import fix_admin_routes
+            admin_fixed = fix_admin_routes(app)
+        except ImportError:
+            logging.warning("route_fix module not found")
+            admin_fixed = False
+        
+        # Report results
+        if auth_fixed and admin_fixed:
+            logging.info("All route fixes applied successfully!")
+            return True
+        else:
+            logging.warning("Some route fixes could not be applied.")
+            return False
     except Exception as e:
-        logger.error(f"Error applying admin fixes: {e}")
+        logging.error(f"Error applying route fixes: {e}")
         return False
 
 # Helper function to get client ID from request
@@ -3902,134 +3895,31 @@ def apply_route_fixes():
         logging.warning("Some route fixes could not be applied.")
         return False
 
-def add_admin_fix_route(app):
-    """Add the missing admin fix route function"""
-    try:
-        @app.route('/admin_fix_route')
-        def admin_fix_route():
-            """Route to test admin fix functionality"""
-            return jsonify({
-                "status": "success",
-                "message": "Admin fix route is working",
-                "timestamp": datetime.now().isoformat()
-            })
-        
-        logger.info("Added admin fix route successfully")
-        return True
-    except Exception as e:
-        logger.error(f"Error adding admin fix route: {e}")
-        return False
-
-def apply_admin_fixes(app):
-    """Apply fixes to admin functionality"""
-    try:
-        # Add the missing admin fix route
-        add_admin_fix_route(app)
-        
-        # Add any other admin fixes here
-        logger.info("Admin fixes applied successfully")
-        return True
-    except Exception as e:
-        logger.error(f"Error applying admin fixes: {e}")
-        return False
-
-def apply_route_fixes():
-    """Apply all route fixes"""
-    try:
-        # Apply auth routes fix
-        try:
-            from auth_fix import fix_auth_routes
-            auth_fixed = fix_auth_routes(app)
-        except ImportError:
-            logging.warning("auth_fix module not found")
-            auth_fixed = False
-        
-        # Apply admin routes fix
-        try:
-            from route_fix import fix_admin_routes
-            admin_fixed = fix_admin_routes(app)
-        except ImportError:
-            logging.warning("route_fix module not found")
-            admin_fixed = False
-        
-        # Report results
-        if auth_fixed and admin_fixed:
-            logging.info("All route fixes applied successfully!")
-            return True
-        else:
-            logging.warning("Some route fixes could not be applied.")
-            return False
-    except Exception as e:
-        logging.error(f"Error applying route fixes: {e}")
-        return False
-
+# Final application setup
+if __name__ == '__main__':
     # Run database schema upgrade
     try:
         if upgrade_database_schema():
-            logging.info("Database schema upgraded successfully")
+            app.logger.info("Database schema upgraded successfully")
         else:
-            logging.error("Failed to upgrade database schema")
+            app.logger.error("Failed to upgrade database schema")
     except Exception as schema_error:
-        logging.error(f"Schema upgrade error: {schema_error}")
+        app.logger.error(f"Schema upgrade error: {schema_error}")
     
     # Get port from environment variable or use default
     port = int(os.environ.get('PORT', 5000))
-    host = os.environ.get('HOST', '0.0.0.0')
-    debug_mode = os.environ.get('FLASK_ENV') == 'development'
     
     # Run the direct database fix
     try:
-        if direct_db_fix():
-            logging.info("Database fix completed successfully")
-        else:
-            logging.warning("Database fix may have failed")
+        direct_db_fix()
     except Exception as db_fix_error:
         logging.error(f"Database fix error: {db_fix_error}")
     
     # Apply route fixes if needed
     try:
-        if apply_route_fixes():
-            logging.info("Route fixes applied successfully")
-        else:
-            logging.warning("Some route fixes may have failed")
+        apply_route_fixes()
     except Exception as route_fix_error:
         logging.error(f"Route fix error: {route_fix_error}")
     
-    # Apply admin fixes
-    try:
-        if apply_admin_fixes(app):
-            logging.info("Admin fixes applied successfully")
-        else:
-            logging.warning("Admin fixes may have failed")
-    except Exception as admin_fix_error:
-        logging.error(f"Admin fix error: {admin_fix_error}")
-    
-    # Final pre-run checks
-    try:
-        logging.info("Performing final pre-run checks...")
-        
-        # Check if Flask app is properly initialized
-        if app is None:
-            logging.error("Flask app is not initialized!")
-            sys.exit(1)
-        else:
-            logging.info(f"Flask app initialized: {type(app)}")
-        
-        # Log registered blueprints
-        blueprints = list(app.blueprints.keys())
-        logging.info(f"Registered blueprints: {blueprints}")
-        
-        # Log route count
-        route_count = len(list(app.url_map.iter_rules()))
-        logging.info(f"Total registered routes: {route_count}")
-        
-    except Exception as check_error:
-        logging.error(f"Pre-run check error: {check_error}")
-    
-    # Start the Flask application
-    try:
-        logging.info(f"Starting Flask server on {host}:{port} (debug={debug_mode})...")
-        app.run(host=host, port=port, debug=debug_mode)
-    except Exception as run_error:
-        logging.error(f"Failed to start Flask server: {run_error}")
-        sys.exit(1)
+    # Use 0.0.0.0 to make the app accessible from any IP
+    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
