@@ -3906,79 +3906,204 @@ def apply_route_fixes():
         logging.warning("Some route fixes could not be applied.")
         return False
 
+def add_admin_fix_route(app):
+    """Add the missing admin fix route function"""
+    try:
+        @app.route('/admin_fix_route')
+        def admin_fix_route():
+            """Route to test admin fix functionality"""
+            return jsonify({
+                "status": "success",
+                "message": "Admin fix route is working",
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        logger.info("Added admin fix route successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error adding admin fix route: {e}")
+        return False
+
+def apply_admin_fixes(app):
+    """Apply fixes to admin functionality"""
+    try:
+        # Add the missing admin fix route
+        add_admin_fix_route(app)
+        
+        # Add any other admin fixes here
+        logger.info("Admin fixes applied successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error applying admin fixes: {e}")
+        return False
+
+def apply_route_fixes():
+    """Apply all route fixes"""
+    try:
+        # Apply auth routes fix
+        try:
+            from auth_fix import fix_auth_routes
+            auth_fixed = fix_auth_routes(app)
+        except ImportError:
+            logging.warning("auth_fix module not found")
+            auth_fixed = False
+        
+        # Apply admin routes fix
+        try:
+            from route_fix import fix_admin_routes
+            admin_fixed = fix_admin_routes(app)
+        except ImportError:
+            logging.warning("route_fix module not found")
+            admin_fixed = False
+        
+        # Report results
+        if auth_fixed and admin_fixed:
+            logging.info("All route fixes applied successfully!")
+            return True
+        else:
+            logging.warning("Some route fixes could not be applied.")
+            return False
+    except Exception as e:
+        logging.error(f"Error applying route fixes: {e}")
+        return False
+
+def direct_db_fix():
+    """Direct database fix function"""
+    try:
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if admin user exists
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        admin_user = cursor.fetchone()
+        
+        if not admin_user:
+            import secrets
+            import hashlib
+            
+            salt = secrets.token_hex(16)
+            password = 'admin123'
+            password_hash = hashlib.pbkdf2_hmac(
+                'sha256', 
+                password.encode(), 
+                salt.encode(), 
+                100000
+            ).hex()
+            
+            cursor.execute('''
+                INSERT INTO users (username, email, password_hash, salt, role, full_name, created_at, active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            ''', ('admin', 'admin@example.com', password_hash, salt, 'admin', 'Admin User', datetime.now().isoformat()))
+            
+            conn.commit()
+            logger.info("Created admin user")
+        
+        conn.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Database fix error: {e}")
+        return False
+
+def upgrade_database_schema():
+    """Upgrade database schema to latest version"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA user_version")
+        current_version = cursor.fetchone()[0]
+        latest_version = 1
+        
+        if current_version < latest_version:
+            logger.info(f"Upgrading database schema from {current_version} to {latest_version}")
+            cursor.execute("PRAGMA user_version = ?", (latest_version,))
+            conn.commit()
+            logger.info("Database schema upgrade completed")
+            return True
+        else:
+            logger.info("Database schema is up to date")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Database schema upgrade failed: {e}")
+        return False
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 # Final application setup
 if __name__ == '__main__':
+    # Log startup information
+    logging.info("Starting application...")
+    logging.info(f"Application startup time: {datetime.now().isoformat()}")
+    
     # Run database schema upgrade
     try:
         if upgrade_database_schema():
-            app.logger.info("Database schema upgraded successfully")
+            logging.info("Database schema upgraded successfully")
         else:
-            app.logger.error("Failed to upgrade database schema")
+            logging.error("Failed to upgrade database schema")
     except Exception as schema_error:
-        app.logger.error(f"Schema upgrade error: {schema_error}")
+        logging.error(f"Schema upgrade error: {schema_error}")
     
     # Get port from environment variable or use default
     port = int(os.environ.get('PORT', 5000))
+    host = os.environ.get('HOST', '0.0.0.0')
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
     
     # Run the direct database fix
     try:
-        direct_db_fix()
+        if direct_db_fix():
+            logging.info("Database fix completed successfully")
+        else:
+            logging.warning("Database fix may have failed")
     except Exception as db_fix_error:
         logging.error(f"Database fix error: {db_fix_error}")
     
     # Apply route fixes if needed
     try:
-        def apply_admin_fixes(app):
-        """Apply fixes to admin functionality"""
-        try:
-            # Add the missing admin fix route
-            add_admin_fix_route(app)
-            
-            # Add any other admin fixes here
-            logger.info("Admin fixes applied successfully")
-            return True
-        except Exception as e:
-            logger.error(f"Error applying admin fixes: {e}")
-            return False
+        if apply_route_fixes():
+            logging.info("Route fixes applied successfully")
+        else:
+            logging.warning("Some route fixes may have failed")
+    except Exception as route_fix_error:
+        logging.error(f"Route fix error: {route_fix_error}")
     
-        def add_admin_fix_route(app):
-            """Add the missing admin fix route function"""
-            try:
-                @app.route('/admin_fix_route')
-                def admin_fix_route():
-                    """Route to test admin fix functionality"""
-                    return jsonify({
-                        "status": "success",
-                        "message": "Admin fix route is working",
-                        "timestamp": datetime.now().isoformat()
-                    })
-            
-                logger.info("Added admin fix route successfully")
-                return True
-            except Exception as e:
-                logger.error(f"Error adding admin fix route: {e}")
-                return False
+    # Apply admin fixes
+    try:
+        if apply_admin_fixes(app):
+            logging.info("Admin fixes applied successfully")
+        else:
+            logging.warning("Admin fixes may have failed")
+    except Exception as admin_fix_error:
+        logging.error(f"Admin fix error: {admin_fix_error}")
     
-        # Get port from environment variable or use default
-        port = int(os.environ.get('PORT', 5000))
+    # Final pre-run checks
+    try:
+        logging.info("Performing final pre-run checks...")
+        
+        # Check if Flask app is properly initialized
+        if app is None:
+            logging.error("Flask app is not initialized!")
+            sys.exit(1)
+        else:
+            logging.info(f"Flask app initialized: {type(app)}")
+        
+        # Log registered blueprints
+        blueprints = list(app.blueprints.keys())
+        logging.info(f"Registered blueprints: {blueprints}")
+        
+        # Log route count
+        route_count = len(list(app.url_map.iter_rules()))
+        logging.info(f"Total registered routes: {route_count}")
+        
+    except Exception as check_error:
+        logging.error(f"Pre-run check error: {check_error}")
     
-        # Run the direct database fix
-        try:
-            direct_db_fix()
-        except Exception as db_fix_error:
-            logging.error(f"Database fix error: {db_fix_error}")
-    
-        # Apply route fixes if needed
-        try:
-            apply_route_fixes()
-        except Exception as route_fix_error:
-            logging.error(f"Route fix error: {route_fix_error}")
-    
-        # Apply admin fixes
-        try:
-            apply_admin_fixes(app)
-        except Exception as admin_fix_error:
-            logging.error(f"Admin fix error: {admin_fix_error}")
-    
-    # Use 0.0.0.0 to make the app accessible from any IP
-    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
+    # Start the Flask application
+    try:
+        logging.info(f"Starting Flask server on {host}:{port} (debug={debug_mode})...")
+        app.run(host=host, port=port, debug=debug_mode)
+    except Exception as run_error:
+        logging.error(f"Failed to start Flask server: {run_error}")
+        sys.exit(1)
