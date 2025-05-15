@@ -22,6 +22,7 @@ from flask_login import LoginManager, current_user
 from functools import wraps
 from urllib.parse import urlparse
 import re
+from admin_fix_integration import apply_admin_fixes
 
 # Import custom modules
 from email_handler import send_email_report
@@ -497,6 +498,8 @@ try:
 except Exception as config_error:
     logging.error(f"Error applying admin configuration: {config_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
+
+emergency_bp = Blueprint('emergency', __name__)
 
 # Register blueprints
 try:
@@ -1594,10 +1597,6 @@ def debug_submit():
         """
     except Exception as e:
         return f"Error: {str(e)}"
-
-@app.route('/admin')
-def admin_dashboard_redirect():
-    return redirect(url_for('admin.dashboard'))
 
 @app.route('/admin', endpoint='main_admin_redirect')
 def admin_main_redirect():
