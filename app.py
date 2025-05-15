@@ -115,7 +115,38 @@ def log_system_info():
         logger.warning(f"Database connection failed: {e}")
     
     logger.info("-----------------------------")
-    
+
+def add_admin_fix_route(app):
+    """Add the missing admin fix route function"""
+    try:
+        @app.route('/admin_fix_route')
+        def admin_fix_route():
+            """Route to test admin fix functionality"""
+            return jsonify({
+                "status": "success",
+                "message": "Admin fix route is working",
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        logger.info("Added admin fix route successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error adding admin fix route: {e}")
+        return False
+
+def apply_admin_fixes(app):
+    """Apply fixes to admin functionality"""
+    try:
+        # Add the missing admin fix route
+        add_admin_fix_route(app)
+        
+        # Add any other admin fixes here
+        logger.info("Admin fixes applied successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error applying admin fixes: {e}")
+        return False
+        
 # Then add the function call
 log_system_info()
 
@@ -505,23 +536,54 @@ scanner_preview_bp = Blueprint('scanner_preview', __name__)
 # Register blueprints
 try:
     register_debug_middleware(app)
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(api_bp)
-    app.register_blueprint(scanner_bp)
-    app.register_blueprint(client_bp) 
-    app.register_blueprint(emergency_bp)  # Add this line
-    app.register_blueprint(scanner_preview_bp, url_prefix='/preview')
+    
+    # Check if blueprints are already registered before registering them
+    if 'auth' not in app.blueprints:
+        app.register_blueprint(auth_bp)
+    else:
+        logging.warning("auth blueprint already registered, skipping")
+        
+    if 'admin' not in app.blueprints:
+        app.register_blueprint(admin_bp)
+    else:
+        logging.warning("admin blueprint already registered, skipping")
+        
+    if 'api' not in app.blueprints:
+        app.register_blueprint(api_bp)
+    else:
+        logging.warning("api blueprint already registered, skipping")
+        
+    if 'scanner' not in app.blueprints:
+        app.register_blueprint(scanner_bp)
+    else:
+        logging.warning("scanner blueprint already registered, skipping")
+        
+    if 'client' not in app.blueprints:
+        app.register_blueprint(client_bp)
+    else:
+        logging.warning("client blueprint already registered, skipping")
+        
+    if 'emergency' not in app.blueprints:
+        app.register_blueprint(emergency_bp)
+    else:
+        logging.warning("emergency blueprint already registered, skipping")
+        
+    if 'scanner_preview' not in app.blueprints:
+        app.register_blueprint(scanner_preview_bp, url_prefix='/preview')
+    else:
+        logging.warning("scanner_preview blueprint already registered, skipping")
+        
     logging.info(f"Blueprints registered successfully at {CURRENT_UTC_TIME} by {CURRENT_USER}")
 except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
+
    
 # Apply fixes
 try:
+    # Apply admin fixes (this will call add_admin_fix_route internally)
     apply_admin_fixes(app)
-    add_admin_fix_route(app)
     logging.info("Fixes applied successfully")
 except Exception as fix_error:
     logging.error(f"Error applying fixes: {fix_error}")
@@ -1600,7 +1662,7 @@ def debug_submit():
     except Exception as e:
         return f"Error: {str(e)}"
 
-@app.route('/admin', endpoint='main_admin_redirect')
+@app.route('/admin_main', endpoint='main_admin_redirect')
 def admin_main_redirect():
     """Redirect to admin dashboard"""
     return redirect(url_for('admin.dashboard'))
@@ -1894,41 +1956,6 @@ def run_emergency_admin():
         """
         return html
 
-def upgrade_database_schema():
-    """Upgrade database schema to latest version"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Check current schema version
-        cursor.execute("PRAGMA user_version")
-        current_version = cursor.fetchone()[0]
-        
-        # Current expected version
-        latest_version = 1
-        
-        if current_version < latest_version:
-            logger.info(f"Upgrading database schema from {current_version} to {latest_version}")
-            
-            # Add any necessary schema updates here
-            cursor.execute("PRAGMA user_version = {}".format(latest_version))
-            conn.commit()
-            
-            logger.info("Database schema upgrade completed")
-            return True
-        else:
-            logger.info("Database schema is up to date")
-            return True
-            
-    except Exception as e:
-        logger.error(f"Database schema upgrade failed: {e}")
-        return False
-    finally:
-        try:
-            conn.close()
-        except:
-            pass
-
 def direct_db_fix():
     """Direct database fix function"""
     try:
@@ -1997,37 +2024,6 @@ def apply_admin_fixes(app):
         return True
     except Exception as e:
         logger.error(f"Error applying admin fixes: {e}")
-        return False
-
-def apply_route_fixes():
-    """Apply all route fixes"""
-    try:
-        # Get the Flask app
-        # Apply auth routes fix
-        try:
-            from auth_fix import fix_auth_routes
-            auth_fixed = fix_auth_routes(app)
-        except ImportError:
-            logging.warning("auth_fix module not found")
-            auth_fixed = False
-        
-        # Apply admin routes fix
-        try:
-            from route_fix import fix_admin_routes
-            admin_fixed = fix_admin_routes(app)
-        except ImportError:
-            logging.warning("route_fix module not found")
-            admin_fixed = False
-        
-        # Report results
-        if auth_fixed and admin_fixed:
-            logging.info("All route fixes applied successfully!")
-            return True
-        else:
-            logging.warning("Some route fixes could not be applied.")
-            return False
-    except Exception as e:
-        logging.error(f"Error applying route fixes: {e}")
         return False
 
 # Helper function to get client ID from request
@@ -3967,76 +3963,6 @@ def apply_route_fixes():
         logging.error(f"Error applying route fixes: {e}")
         return False
 
-def direct_db_fix():
-    """Direct database fix function"""
-    try:
-        conn = sqlite3.connect(CLIENT_DB_PATH)
-        cursor = conn.cursor()
-        
-        # Check if admin user exists
-        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
-        admin_user = cursor.fetchone()
-        
-        if not admin_user:
-            import secrets
-            import hashlib
-            
-            salt = secrets.token_hex(16)
-            password = 'admin123'
-            password_hash = hashlib.pbkdf2_hmac(
-                'sha256', 
-                password.encode(), 
-                salt.encode(), 
-                100000
-            ).hex()
-            
-            cursor.execute('''
-                INSERT INTO users (username, email, password_hash, salt, role, full_name, created_at, active)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-            ''', ('admin', 'admin@example.com', password_hash, salt, 'admin', 'Admin User', datetime.now().isoformat()))
-            
-            conn.commit()
-            logger.info("Created admin user")
-        
-        conn.close()
-        return True
-        
-    except Exception as e:
-        logger.error(f"Database fix error: {e}")
-        return False
-
-def upgrade_database_schema():
-    """Upgrade database schema to latest version"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA user_version")
-        current_version = cursor.fetchone()[0]
-        latest_version = 1
-        
-        if current_version < latest_version:
-            logger.info(f"Upgrading database schema from {current_version} to {latest_version}")
-            cursor.execute("PRAGMA user_version = ?", (latest_version,))
-            conn.commit()
-            logger.info("Database schema upgrade completed")
-            return True
-        else:
-            logger.info("Database schema is up to date")
-            return True
-            
-    except Exception as e:
-        logger.error(f"Database schema upgrade failed: {e}")
-        return False
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-# Final application setup
-if __name__ == '__main__':
-    # Log startup information
-    logging.info("Starting application...")
-    logging.info(f"Application startup time: {datetime.now().isoformat()}")
-    
     # Run database schema upgrade
     try:
         if upgrade_database_schema():
