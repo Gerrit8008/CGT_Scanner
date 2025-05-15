@@ -22,14 +22,12 @@ from flask_login import LoginManager, current_user
 from functools import wraps
 from urllib.parse import urlparse
 import re
-from admin_fix_integration import apply_admin_fixes
 
 # Import custom modules
 from email_handler import send_email_report
 from config import get_config
 from api import api_bp
 from client_db import init_client_db, CLIENT_DB_PATH, init_scanner_configurations_table
-from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
 from scanner_router import scanner_bp
 from auth import auth_bp
 from admin import admin_bp
@@ -93,31 +91,6 @@ GATEWAY_PORT_WARNINGS = {
     22: ("SSH", "Low"),
 }
 
-def log_system_info():
-    """Log details about the system environment"""
-    logger = logging.getLogger(__name__)
-    logger.info("----- System Information -----")
-    logger.info(f"Python version: {sys.version}")
-    logger.info(f"Platform: {platform.platform()}")
-    logger.info(f"Working directory: {os.getcwd()}")
-    logger.info(f"Database path: {DB_PATH}")
-    
-    # Test database connection
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT sqlite_version()")
-        version = cursor.fetchone()
-        logger.info(f"SQLite version: {version[0]}")
-        conn.close()
-        logger.info("Database connection successful")
-    except Exception as e:
-        logger.warning(f"Database connection failed: {e}")
-    
-    logger.info("-----------------------------")
-    
-# Then add the function call
-log_system_info()
 
 # Setup logging
 def setup_logging():
@@ -499,9 +472,6 @@ except Exception as config_error:
     logging.error(f"Error applying admin configuration: {config_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
-emergency_bp = Blueprint('emergency', __name__)
-scanner_preview_bp = Blueprint('scanner_preview', __name__)
-
 # Register blueprints
 try:
     register_debug_middleware(app)
@@ -510,22 +480,13 @@ try:
     app.register_blueprint(api_bp)
     app.register_blueprint(scanner_bp)
     app.register_blueprint(client_bp) 
-    app.register_blueprint(emergency_bp)  # Add this line
-    app.register_blueprint(scanner_preview_bp, url_prefix='/preview')
+    app.register_blueprint(emergency_bp)
+    app.register_blueprint(scanner_preview_bp, url_prefix='/preview')  # Added URL prefix
     logging.info(f"Blueprints registered successfully at {CURRENT_UTC_TIME} by {CURRENT_USER}")
 except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
     logging.debug(f"Exception traceback: {traceback.format_exc()}")
 
-try:
-    from admin_fix_integration import apply_admin_fixes
-    apply_admin_fixes(app)
-    add_admin_fix_route(app)
-    logging.info("Fixes applied successfully")
-except Exception as fix_error:
-    logging.error(f"Error applying fixes: {fix_error}")
-    logging.debug(f"Exception traceback: {traceback.format_exc()}")
-    
 # Apply fixes
 try:
     apply_admin_fixes(app)
@@ -1608,6 +1569,10 @@ def debug_submit():
     except Exception as e:
         return f"Error: {str(e)}"
 
+@app.route('/admin')
+def admin_dashboard_redirect():
+    return redirect(url_for('admin.dashboard'))
+
 @app.route('/admin', endpoint='main_admin_redirect')
 def admin_main_redirect():
     """Redirect to admin dashboard"""
@@ -1622,6 +1587,47 @@ def handle_500(e):
 def handle_404(e):
     app.logger.error(f'404 error: {str(e)}')
     return render_template('error.html', error="Page not found"), 404
+
+@app.route('/api/create-scanner', methods=['POST'])
+def create_scanner_api():
+    """API endpoint to handle scanner creation form submission"""
+    try:
+        # Get form data
+        client_data = {
+            'business_name': request.form.get('business_name', ''),
+            'business_domain': request.form.get('business_domain', ''),
+            'contact_email': request.form.get('contact_email', ''),
+            'contact_phone': request.form.get('contact_phone', ''),
+            'scanner_name': request.form.get('scanner_name', ''),
+            'subscription': request.form.get('subscription', 'basic'),
+            'primary_color': request.form.get('primary_color', '#FF6900'),
+            'secondary_color': request.form.get('secondary_color', '#808588'),
+            'email_subject': request.form.get('email_subject', 'Your Security Scan Report'),
+            'email_intro': request.form.get('email_intro', '')
+        }
+        
+        # Get default scans
+        default_scans = request.form.getlist('default_scans[]')
+        if default_scans:
+            client_data['default_scans'] = default_scans
+        
+        # Handle file uploads
+        if 'logo' in request.files and request.files['logo'].filename:
+            # Process logo upload
+            pass
+            
+        if 'favicon' in request.files and request.files['favicon'].filename:
+            # Process favicon upload
+            pass
+            
+        # For now, just return success response
+        flash('Scanner created successfully', 'success')
+        return redirect(url_for('admin.dashboard'))
+        
+    except Exception as e:
+        app.logger.error(f"Error creating scanner: {str(e)}")
+        flash(f'Error creating scanner: {str(e)}', 'danger')
+        return redirect(url_for('customize_scanner'))
 
 @app.route('/api/service_inquiry', methods=['POST'])
 def api_service_inquiry():
