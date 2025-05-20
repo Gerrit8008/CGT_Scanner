@@ -34,6 +34,8 @@ from admin import admin_bp
 from setup_admin import configure_admin
 from client import client_bp
 from migrations import run_migrations
+from admin_web_fix import add_admin_fix_route
+from auth_routes import admin_required
 from scan import (
     extract_domain_from_email,
     server_lookup,
@@ -221,6 +223,13 @@ try:
     logging.info("Scanner preview initialized successfully")
 except Exception as e:
     logging.error(f"Error initializing scanner preview: {e}")
+
+try:
+    from auth_fix import fix_auth_routes
+    fix_auth_routes(app)
+    logging.info("Auth routes fixed successfully")
+except Exception as e:
+    logging.error(f"Error fixing auth routes: {e}")
 
 # Configure upload settings for scanner preview
 SCANNER_UPLOAD_FOLDER = os.path.join('static', 'uploads', 'logos')
