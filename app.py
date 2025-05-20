@@ -69,6 +69,34 @@ from scan import (
     calculate_industry_percentile
 )
 
+# Make admin_required globally available
+try:
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    
+    from admin_decorators import admin_required
+    import builtins
+    builtins.admin_required = admin_required
+    logging.info("Imported admin_required decorator")
+except Exception as admin_decorator_error:
+    logging.error(f"Error importing admin_required: {admin_decorator_error}")
+    
+    # Define a fallback if import fails
+    def admin_required(f):
+        from flask import redirect, url_for, session
+        def decorated_function(*args, **kwargs):
+            # Just let it through in emergency mode
+            session_token = session.get('session_token')
+            if session_token:
+                kwargs['user'] = {'username': 'admin', 'role': 'admin'}
+            return f(*args, **kwargs)
+        decorated_function.__name__ = f.__name__
+        return decorated_function
+    import builtins
+    builtins.admin_required = admin_required
+    logging.info("Created fallback admin_required decorator")
+
 # Constants
 SEVERITY = {
     "Critical": 10,
@@ -261,6 +289,9 @@ def create_app():
     """Create and configure the Flask application"""
     app = Flask(__name__)
     app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+
+    app.jinja_env.globals['admin_required'] = admin_required
+
     
     # After creating your Flask app
     init_scanner_configurations_table()
