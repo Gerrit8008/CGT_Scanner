@@ -234,9 +234,9 @@ def create_app():
         app=app,
         key_func=get_remote_address,
         default_limits=["200 per day", "50 per hour"],
-        storage_uri="memory://",
+        storage_uri="memory://"
         # Add this to handle missing or invalid IP addresses more gracefully
-        default_limits_deduction_strategies=['fixed-window', 'moving-window']
+        #default_limits_deduction_strategies=['fixed-window', 'moving-window']
     )
     
     # Add a simple, dedicated health check endpoint that bypasses the rate limiter
@@ -492,6 +492,7 @@ def load_user(user_id):
         logging.error(f"Error loading user {user_id}: {e}")
         return None
 
+
 # Apply admin configuration
 try:
     app = configure_admin(app)
@@ -550,8 +551,15 @@ except ImportError:
 except Exception as e:
     logging.error(f"Error registering admin_routes_bp: {e}")
 
-# Now define all routes that need the app instance
 
+# Create emergency blueprint if missing
+emergency_bp = Blueprint('emergency', __name__)
+
+@emergency_bp.route('/emergency')
+def emergency_status():
+    return {"status": "emergency blueprint active"}
+
+# Now define all routes that need the app instance
 @app.route('/run_migrations')
 def run_migrations_route():
     """Run database migrations on demand"""
@@ -922,14 +930,6 @@ def api_email_report():
         logging.debug(traceback.format_exc())
         return jsonify({"status": "error", "message": str(e)})
 
-
-# Create emergency blueprint if missing
-emergency_bp = Blueprint('emergency', __name__)
-
-@emergency_bp.route('/emergency')
-def emergency_status():
-    return {"status": "emergency blueprint active"}
-
 # Create scanner preview blueprint if missing
 scanner_preview_bp = Blueprint('scanner_preview', __name__)
 
@@ -1071,9 +1071,20 @@ def clear_session():
     })
 
 @app.route('/api/scan', methods=['POST'])
-@limiter.limit("5 per minute")
 def api_scan():
     """API endpoint for scan requests"""
+    # Only apply rate limiting if limiter is available
+    if limiter:
+        try:
+            return limiter.limit("5 per minute")(api_scan_implementation)()
+        except Exception as limiter_error:
+            logging.warning(f"Rate limiter error: {limiter_error}")
+            return api_scan_implementation()
+    else:
+        return api_scan_implementation()
+
+def api_scan_implementation():
+    """Implementation of the API scan endpoint"""
     try:
         # Get client info from authentication
         client_id = get_client_id_from_request()
