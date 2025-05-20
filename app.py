@@ -475,7 +475,7 @@ except Exception as config_error:
 # Register blueprints
 try:
     register_debug_middleware(app)
-    app.register_blueprint(auth_bp)
+    app.register_blueprint(auth_bp, name='auth_blueprint')
     app.register_blueprint(admin_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(scanner_bp)
@@ -1986,6 +1986,7 @@ def apply_admin_fixes(app):
     """Apply fixes to admin functionality"""
     # Add any admin-specific fixes here
     logger.info("Admin fixes applied")
+    return app
 
 def add_admin_fix_route(app):
     """Add route for admin fixes"""
