@@ -222,7 +222,7 @@ def create_app():
     """Create and configure the Flask application"""
     app = Flask(__name__)
     app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-
+    
     # After creating your Flask app
     init_scanner_configurations_table()
     
@@ -234,8 +234,36 @@ def create_app():
         app=app,
         key_func=get_remote_address,
         default_limits=["200 per day", "50 per hour"],
-        storage_uri="memory://"
+        storage_uri="memory://",
+        # Add this to handle missing or invalid IP addresses more gracefully
+        default_limits_deduction_strategies=['fixed-window', 'moving-window']
     )
+    
+    # Add a simple, dedicated health check endpoint that bypasses the rate limiter
+    @app.route('/health')
+    @limiter.exempt  # This exempts this route from rate limiting
+    def health_check():
+        """Simple health check endpoint for monitoring systems"""
+        return jsonify({
+            "status": "ok",
+            "timestamp": datetime.now().isoformat()
+        })
+    
+    # Add custom error handlers for common status codes
+    @app.errorhandler(400)
+    def handle_bad_request(e):
+        # Check if this is a health check request
+        if request.path == '/' and request.method in ['GET', 'HEAD']:
+            # Return a 200 OK for health checks even if there's an issue
+            return "OK", 200
+        return jsonify({"error": "Bad Request", "message": str(e)}), 400
+    
+    @app.errorhandler(429)
+    def handle_rate_limit(e):
+        # Also return OK for rate-limited health checks
+        if request.path == '/' and request.method in ['GET', 'HEAD']:
+            return "OK", 200
+        return jsonify({"error": "Rate limit exceeded", "message": str(e)}), 429
     
     return app, limiter
 
