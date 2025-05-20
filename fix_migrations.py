@@ -85,6 +85,135 @@ def fix_migration_006():
             conn.close()
         return False
 
+def fix_migration_007():
+    """
+    Fix the migration 007_add_client_customization_fields that's failing due to duplicate scanner_name column
+    """
+    try:
+        # Connect to database
+        conn = sqlite3.connect(CLIENT_DB_PATH)
+        cursor = conn.cursor()
+        
+        # 1. Check if migration 007 is already applied
+        cursor.execute("SELECT name FROM migrations WHERE name = '007_add_client_customization_fields'")
+        if cursor.fetchone():
+            logger.info("Migration 007_add_client_customization_fields is already marked as applied")
+            conn.close()
+            return True
+        
+        # 2. Check which columns already exist in the clients table
+        cursor.execute("PRAGMA table_info(clients)")
+        columns = cursor.fetchall()
+        column_names = [col[1] for col in columns]
+        
+        # 3. Begin transaction
+        conn.execute('BEGIN TRANSACTION')
+        
+        # 4. Add only columns that don't already exist
+        columns_to_add = [
+            ('primary_color', "TEXT", "'#FF6900'"),
+            ('secondary_color', "TEXT", "'#808588'"),
+            ('business_name', "TEXT", "NULL"),
+            ('business_domain', "TEXT", "NULL")
+        ]
+        
+        for col_name, col_type, default in columns_to_add:
+            if col_name not in column_names:
+                logger.info(f"Adding '{col_name}' column to clients table")
+                cursor.execute(f"ALTER TABLE clients ADD COLUMN {col_name} {col_type} DEFAULT {default}")
+            else:
+                logger.info(f"Column '{col_name}' already exists in clients table")
+        
+        # Skip scanner_name as it already exists
+        logger.info("Skipping scanner_name column (already exists)")
+        
+        # 5. Create customizations table if it doesn't exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='customizations'")
+        if not cursor.fetchone():
+            logger.info("Creating customizations table")
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS customizations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                primary_color TEXT DEFAULT '#FF6900',
+                secondary_color TEXT DEFAULT '#808588',
+                logo_path TEXT,
+                email_subject TEXT DEFAULT 'Your Security Scan Report',
+                email_intro TEXT DEFAULT 'Thank you for using our security scanner.',
+                default_scans TEXT DEFAULT '["network", "web", "email", "ssl"]',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+            )
+            ''')
+        else:
+            logger.info("Customizations table already exists")
+        
+        # 6. Create scan_history table if it doesn't exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scan_history'")
+        if not cursor.fetchone():
+            logger.info("Creating scan_history table")
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS scan_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                scan_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                target TEXT NOT NULL,
+                scan_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                report_path TEXT,
+                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+            )
+            ''')
+        else:
+            logger.info("Scan_history table already exists")
+        
+        # 7. Mark migration as applied
+        cursor.execute(
+            "INSERT INTO migrations (name, applied_at) VALUES (?, ?)",
+            ('007_add_client_customization_fields', datetime.now().isoformat())
+        )
+        
+        conn.commit()
+        logger.info("Migration 007_add_client_customization_fields successfully applied")
+        
+        conn.close()
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error fixing migration 007: {e}")
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return False
+
+# Update your existing fix_all_migrations() function to include the new fix:
+
+def fix_all_migrations():
+    """
+    Fix all migrations by checking each one
+    """
+    # Fix migration 006
+    result_006 = fix_migration_006()
+    logger.info(f"Migration 006 fix result: {'Success' if result_006 else 'Failed'}")
+    
+    # Fix migration 007
+    result_007 = fix_migration_007()
+    logger.info(f"Migration 007 fix result: {'Success' if result_007 else 'Failed'}")
+    
+    return result_006 and result_007
+
+# Update your main block to include both migration fixes:
+
+if __name__ == "__main__":
+    print("Running migration fixes...")
+    
+    if fix_all_migrations():
+        print("✅ All migrations fixed successfully!")
+    else:
+        print("❌ Some migrations could not be fixed. Check the logs for details.")
+
 def fix_all_migrations():
     """
     Fix all migrations by checking each one
