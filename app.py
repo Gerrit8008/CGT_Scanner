@@ -155,7 +155,7 @@ class DatabaseManager:
 db_manager = DatabaseManager()
 
 # Log system info
-log_system_info()
+#log_system_info()
 
 # Define upload folder for file uploads
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -3654,40 +3654,6 @@ def fix_duplicate_error_handlers(content):
     content = re.sub(pattern, '', content, flags=re.DOTALL)
     
     return content
-
-def add_missing_functions(content):
-    """Add missing function implementations"""
-    # Add log_system_info function if not present
-    if 'def log_system_info():' not in content:
-        log_function = '''
-
-def log_system_info():
-    """Log details about the system environment"""
-    logger = logging.getLogger(__name__)
-    
-    logger.info("----- System Information -----")
-    logger.info(f"Python version: {sys.version}")
-    logger.info(f"Platform: {platform.platform()}")
-    logger.info(f"Working directory: {os.getcwd()}")
-    logger.info(f"Database path: {DB_PATH}")
-    
-    # Test database connection
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT sqlite_version()")
-        version = cursor.fetchone()
-        logger.info(f"SQLite version: {version[0]}")
-        conn.close()
-        logger.info("Database connection successful")
-    except Exception as e:
-        logger.warning(f"Database connection failed: {e}")
-    
-    logger.info("-----------------------------")
-'''
-        return content + log_function
-    return content
-
 
 def fix_main_block(content):
     """Fix the broken main execution block"""
