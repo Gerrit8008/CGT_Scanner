@@ -110,7 +110,12 @@ def run_migrations():
             {
                 'name': '006_add_full_name_to_users',
                 'sql': '''
-                ALTER TABLE users ADD COLUMN full_name TEXT;
+                -- Check if column exists before adding it
+                SELECT CASE 
+                    WHEN NOT EXISTS (SELECT 1 FROM pragma_table_info('users') WHERE name = 'full_name') 
+                    THEN 'ALTER TABLE users ADD COLUMN full_name TEXT;'
+                    ELSE 'SELECT 1;' -- Do nothing if column already exists
+                END AS sql_to_run;
                 '''
             },
             {
