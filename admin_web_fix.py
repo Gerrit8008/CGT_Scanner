@@ -138,12 +138,14 @@ def create_admin_routes():
     \"\"\"Create admin_routes.py with routes for admin pages\"\"\"
     admin_routes_content = \"\"\"# admin_routes.py
 from flask import Blueprint, render_template, redirect, url_for, session, request, flash
+from functools import wraps
 
 # Create a blueprint for the missing admin routes
 admin_routes_bp = Blueprint('admin_routes', __name__, url_prefix='/admin')
 
 # Middleware for admin authorization
 def admin_required(f):
+    @wraps(f)
     def decorated_function(*args, **kwargs):
         session_token = session.get('session_token')
         
@@ -165,32 +167,30 @@ def admin_required(f):
         kwargs['user'] = user
         return f(*args, **kwargs)
     
-    # Preserve function metadata
-    decorated_function.__name__ = f.__name__
     return decorated_function
 
 @admin_routes_bp.route('/subscriptions')
 @admin_required
 def subscriptions(user):
-    \"\"\"Subscriptions management page\"\"\"
+    # Subscriptions management page
     return render_template('admin/subscription-management.html', user=user)
 
 @admin_routes_bp.route('/reports')
 @admin_required
 def reports(user):
-    \"\"\"Reports dashboard page\"\"\"
+    # Reports dashboard page
     return render_template('admin/reports-dashboard.html', user=user)
 
 @admin_routes_bp.route('/settings')
 @admin_required
 def settings(user):
-    \"\"\"Settings dashboard page\"\"\"
+    # Settings dashboard page
     return render_template('admin/settings-dashboard.html', user=user)
 
 @admin_routes_bp.route('/scanners')
 @admin_required
 def scanners(user):
-    \"\"\"Scanner management page\"\"\"
+    # Scanner management page
     return render_template(
         'admin/scanner-management.html',
         user=user,
@@ -307,12 +307,14 @@ def create_fixed_admin_routes():
     """Create a fixed version of admin_routes.py"""
     fixed_content = """# admin_routes.py
 from flask import Blueprint, render_template, redirect, url_for, session, request, flash
+from functools import wraps
 
 # Create a blueprint for the missing admin routes
 admin_routes_bp = Blueprint('admin_routes', __name__, url_prefix='/admin')
 
 # Middleware for admin authorization
 def admin_required(f):
+    @wraps(f)
     def decorated_function(*args, **kwargs):
         session_token = session.get('session_token')
         
@@ -334,32 +336,30 @@ def admin_required(f):
         kwargs['user'] = user
         return f(*args, **kwargs)
     
-    # Preserve function metadata
-    decorated_function.__name__ = f.__name__
     return decorated_function
 
 @admin_routes_bp.route('/subscriptions')
 @admin_required
 def subscriptions(user):
-    """Subscriptions management page"""
+    # Subscriptions management page
     return render_template('admin/subscription-management.html', user=user)
 
 @admin_routes_bp.route('/reports')
 @admin_required
 def reports(user):
-    """Reports dashboard page"""
+    # Reports dashboard page
     return render_template('admin/reports-dashboard.html', user=user)
 
 @admin_routes_bp.route('/settings')
 @admin_required
 def settings(user):
-    """Settings dashboard page"""
+    # Settings dashboard page
     return render_template('admin/settings-dashboard.html', user=user)
 
 @admin_routes_bp.route('/scanners')
 @admin_required
 def scanners(user):
-    """Scanner management page"""
+    # Scanner management page
     return render_template(
         'admin/scanner-management.html',
         user=user,
@@ -398,6 +398,13 @@ def scanners(user):
     except Exception as e:
         print(f"Failed to write fixed file: {str(e)}")
         return False
+
+def add_admin_fix_route(app):
+    """Add a simple admin fix route"""
+    @app.route('/admin_fix')
+    def admin_fix():
+        return {"status": "Admin fix route active"}
+    return app
 
 def add_web_fix_route(app):
     """Add web-based fix route to Flask app"""
