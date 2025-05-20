@@ -36,6 +36,8 @@ from client import client_bp
 from migrations import run_migrations
 from admin_web_fix import add_admin_fix_route
 from auth_routes import admin_required
+# Import database functionality
+from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
 from scan import (
     extract_domain_from_email,
     server_lookup,
@@ -112,7 +114,17 @@ def apply_admin_fixes(app):
     # Add any admin-specific fixes here
     logger.info("Admin fixes applied")
     return app
-    
+
+# Run migration fixes
+try:
+    from fix_migrations import fix_all_migrations
+    if fix_all_migrations():
+        logging.info("All migrations fixed successfully")
+    else:
+        logging.warning("Some migrations could not be fixed")
+except Exception as migration_error:
+    logging.error(f"Error running migration fixes: {migration_error}")
+
 # Setup logging
 def setup_logging():
     """Configure application logging"""
@@ -152,8 +164,7 @@ logger = setup_logging()
 CURRENT_UTC_TIME = datetime.now().isoformat()
 CURRENT_USER = "system"
 
-# Import database functionality
-from db import init_db, save_scan_results, get_scan_results, save_lead_data, DB_PATH
+
 
 class DatabaseManager:
     def __init__(self):
