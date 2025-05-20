@@ -91,7 +91,26 @@ GATEWAY_PORT_WARNINGS = {
     22: ("SSH", "Low"),
 }
 
+# Create emergency blueprint if missing
+emergency_bp = Blueprint('emergency', __name__)
 
+@emergency_bp.route('/emergency')
+def emergency_status():
+    return {"status": "emergency blueprint active"}
+
+# Create scanner preview blueprint if missing
+scanner_preview_bp = Blueprint('scanner_preview', __name__)
+
+@scanner_preview_bp.route('/health')
+def preview_health():
+    return {"status": "scanner preview active"}
+
+def apply_admin_fixes(app):
+    """Apply fixes to admin functionality"""
+    # Add any admin-specific fixes here
+    logger.info("Admin fixes applied")
+    return app
+    
 # Setup logging
 def setup_logging():
     """Configure application logging"""
@@ -504,13 +523,18 @@ except Exception as config_error:
 # Register blueprints
 try:
     register_debug_middleware(app)
+    
+    # Register auth blueprint only once with a unique name
     app.register_blueprint(auth_bp, name='auth_blueprint')
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(api_bp)
-    app.register_blueprint(scanner_bp)
-    app.register_blueprint(client_bp) 
-    app.register_blueprint(emergency_bp)
-    app.register_blueprint(scanner_preview_bp, url_prefix='/preview')  # Added URL prefix
+    
+    # Register other blueprints with unique names
+    app.register_blueprint(admin_bp, name='admin_blueprint')
+    app.register_blueprint(api_bp, name='api_blueprint')
+    app.register_blueprint(scanner_bp, name='scanner_blueprint')
+    app.register_blueprint(client_bp, name='client_blueprint') 
+    app.register_blueprint(emergency_bp, name='emergency_blueprint')
+    app.register_blueprint(scanner_preview_bp, url_prefix='/preview', name='scanner_preview_blueprint')
+    
     logging.info(f"Blueprints registered successfully at {CURRENT_UTC_TIME} by {CURRENT_USER}")
 except Exception as blueprint_error:
     logging.error(f"Error registering blueprints: {blueprint_error}")
@@ -550,14 +574,6 @@ except ImportError:
     logging.warning("Could not import admin_routes_bp")
 except Exception as e:
     logging.error(f"Error registering admin_routes_bp: {e}")
-
-
-# Create emergency blueprint if missing
-emergency_bp = Blueprint('emergency', __name__)
-
-@emergency_bp.route('/emergency')
-def emergency_status():
-    return {"status": "emergency blueprint active"}
 
 # Now define all routes that need the app instance
 @app.route('/run_migrations')
@@ -929,13 +945,6 @@ def api_email_report():
         logging.error(f"Error in email report API: {e}")
         logging.debug(traceback.format_exc())
         return jsonify({"status": "error", "message": str(e)})
-
-# Create scanner preview blueprint if missing
-scanner_preview_bp = Blueprint('scanner_preview', __name__)
-
-@scanner_preview_bp.route('/health')
-def preview_health():
-    return {"status": "scanner preview active"}
 
 @app.route('/simple_scan')
 def simple_scan():
@@ -1612,11 +1621,6 @@ def debug_submit():
 def admin_dashboard_redirect():
     return redirect(url_for('admin.dashboard'))
 
-@app.route('/admin', endpoint='main_admin_redirect')
-def admin_main_redirect():
-    """Redirect to admin dashboard"""
-    return redirect(url_for('admin.dashboard'))
-
 @app.errorhandler(500)
 def handle_500(e):
     app.logger.error(f'500 error: {str(e)}')
@@ -1783,6 +1787,33 @@ try:
     check_route_conflicts()
 except Exception as route_check_error:
     logging.error(f"Error checking route conflicts: {route_check_error}")
+
+@app.route('/test')
+def test_route():
+    return """
+    <!DOCTYPE html>
+    <html>
+        <head><title>Test Page</title></head>
+        <body>
+            <h1>Flask App is Working!</h1>
+            <p>If you can see this, your Flask application is functioning correctly.</p>
+            <p>Time: """ + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + """</p>
+        </body>
+    </html>
+    """
+
+@app.route('/debug_templates')
+def debug_templates():
+    template_folder = app.template_folder
+    templates_exist = os.path.exists(template_folder)
+    templates_list = os.listdir(template_folder) if templates_exist else []
+    
+    return jsonify({
+        "template_folder": template_folder,
+        "templates_exist": templates_exist,
+        "templates_list": templates_list,
+        "working_directory": os.getcwd()
+    })
 
 @app.route('/run_dashboard_fix')
 def run_dashboard_fix():
@@ -2020,12 +2051,6 @@ def direct_db_fix():
     except Exception as e:
         logger.error(f"Database fix error: {e}")
         return False
-
-def apply_admin_fixes(app):
-    """Apply fixes to admin functionality"""
-    # Add any admin-specific fixes here
-    logger.info("Admin fixes applied")
-    return app
 
 def add_admin_fix_route(app):
     """Add route for admin fixes"""
